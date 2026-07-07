@@ -1,0 +1,22 @@
+name: breach-alpha
+tick_rate_hz: 20
+squad_size: 5
+objective: breach-gate
+guards:
+  - id: g1
+    position: [10, 10]
+    patrol:
+      - [10, 10]
+      - [12, 10]
+      - [12, 12]
+agents:
+  - id: a1
+    position: [1, 2]
+  - id: a2
+    position: [2, 2]
+  - id: a3
+    position: [3, 2]
+  - id: a4
+    position: [4, 2]
+  - id: a5
+    position: [5, 2]
