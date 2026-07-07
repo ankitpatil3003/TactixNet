@@ -40,7 +40,7 @@ def test_update_doctrine() -> None:
     assert response.json()["doctrine"]["priority_objective"] == "breach-gate"
 
 
-def test_websocket_echo_round_trip() -> None:
+def test_websocket_directive_round_trip() -> None:
     create = client.post("/squads", json={"agent_ids": ["a1"]})
     squad_id = create.json()["squad_id"]
 
@@ -55,10 +55,10 @@ def test_websocket_echo_round_trip() -> None:
 
     with client.websocket_connect(f"/ws/squads/{squad_id}") as ws:
         ws.send_text(json.dumps(frame))
-        echo = ws.receive_json()
-        assert echo["type"] == "echo"
-        assert echo["tick"] == 5
-        assert echo["agent_id"] == "a1"
+        message = ws.receive_json()
+        assert message["type"] == "directive"
+        assert message["directive"]["tick"] == 5
+        assert len(message["directive"]["awards"]) == 1
 
 
 def test_websocket_malformed_frame_returns_error() -> None:
