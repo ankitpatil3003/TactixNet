@@ -20,6 +20,12 @@ def test_create_and_get_squad() -> None:
     assert state.json()["agent_ids"] == ["a1", "a2", "a3"]
 
 
+def test_viewer_served_by_gateway() -> None:
+    response = client.get("/viewer")
+    assert response.status_code == 200
+    assert "TactixNet Squad Viewer" in response.text
+
+
 def test_get_missing_squad_returns_404() -> None:
     response = client.get("/squads/missing-id")
     assert response.status_code == 404

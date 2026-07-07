@@ -1,9 +1,11 @@
 """FastAPI gateway: WebSocket hot path + REST control plane."""
 
 import json
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from contracts import (
@@ -35,9 +37,17 @@ class SquadStateResponse(BaseModel):
     last_directive: SquadDirective | None
 
 
+VIEWER_HTML = Path(__file__).resolve().parent.parent / "viewer" / "index.html"
+
+
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/viewer")
+async def viewer() -> FileResponse:
+    return FileResponse(VIEWER_HTML, media_type="text/html")
 
 
 @app.post("/squads", response_model=SquadStateResponse)
