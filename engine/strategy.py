@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 from typing import Any
@@ -45,7 +46,10 @@ class StrategyLayer:
             return self._fallback_doctrine(squad_id, priority_objective)
 
         try:
-            response = self._client.chat.completions.create(
+            # The Groq SDK call is blocking; keep it off the event loop so the
+            # reflex tick is never stalled by Tier-2.
+            response = await asyncio.to_thread(
+                self._client.chat.completions.create,
                 model="llama-3.1-8b-instant",
                 messages=[
                     {

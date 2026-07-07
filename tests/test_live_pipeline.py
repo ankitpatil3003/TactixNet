@@ -73,6 +73,7 @@ def test_alert_frame_triggers_replan() -> None:
     assert message["interrupted"] is True
     assert message["replan_count"] >= 1
     assert "-replan-" in message["objective_ref"]
+    assert message.get("recovery_ms") is not None
 
 
 def test_incomplete_tick_flushed_when_newer_tick_arrives() -> None:

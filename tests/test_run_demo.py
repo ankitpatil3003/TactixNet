@@ -1,10 +1,11 @@
 from pathlib import Path
 
+from contracts import RoleEnum
+from simulation.movement import step_agent_by_role
 from simulation.run_demo import (
     DEFAULT_SCENARIO,
     build_sim,
     load_scenario,
-    step_agents_toward,
     world_snapshot,
 )
 
@@ -24,19 +25,13 @@ def test_build_sim_from_scenario() -> None:
     assert sim.guards[0].patrol_route[0] == (10.0, 10.0)
 
 
-def test_agents_step_toward_objective() -> None:
+def test_role_based_movement_advances_agent() -> None:
     scenario = load_scenario(Path(DEFAULT_SCENARIO))
     sim = build_sim(scenario)
     start = sim.agents[0].position
-    target = (16.0, 16.0)
-
-    for _ in range(10):
-        step_agents_toward(sim, target)
-
-    end = sim.agents[0].position
-    dist_start = ((target[0] - start[0]) ** 2 + (target[1] - start[1]) ** 2) ** 0.5
-    dist_end = ((target[0] - end[0]) ** 2 + (target[1] - end[1]) ** 2) ** 0.5
-    assert dist_end < dist_start
+    objective = tuple(scenario["objective_position"])
+    step_agent_by_role(sim, sim.agents[0], RoleEnum.BREACH, objective, step=0.5)
+    assert sim.agents[0].position != start
 
 
 def test_world_snapshot_shape() -> None:
@@ -51,3 +46,4 @@ def test_world_snapshot_shape() -> None:
     assert len(snapshot["guards"]) == 1
     assert "alert_level" in snapshot["agents"][0]
     assert "vision_range" in snapshot["guards"][0]
+    assert "state" in snapshot["guards"][0]

@@ -2,15 +2,23 @@
 
 from __future__ import annotations
 
+import asyncio
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
 from langgraph.checkpoint.memory import MemorySaver
 
-from contracts import PerceptionFrame, SquadDirective
+from contracts import DoctrineUpdate, PerceptionFrame, SquadDirective, alert_level_rank
+from contracts.enums import AlertLevel
 from engine.graph import build_negotiation_graph
 from engine.negotiation import ReflexNegotiator
+from engine.strategy import StrategyLayer
+
+DOCTRINE_REFRESH_INTERVAL_TICKS = 100
+
+DoctrineCallback = Callable[[DoctrineUpdate], Awaitable[None]]
 
 
 @dataclass
@@ -20,9 +28,10 @@ class CycleResult:
     interrupted: bool
     replan_count: int
     objective_ref: str
+    recovery_ms: float | None = None
 
     def to_message(self) -> dict[str, Any]:
-        return {
+        message: dict[str, Any] = {
             "type": "directive",
             "directive": self.directive.model_dump(mode="json"),
             "latency_ms": round(self.latency_ms, 2),
@@ -30,24 +39,27 @@ class CycleResult:
             "replan_count": self.replan_count,
             "objective_ref": self.objective_ref,
         }
+        if self.recovery_ms is not None:
+            message["recovery_ms"] = round(self.recovery_ms, 2)
+        return message
 
 
 @dataclass
 class LiveNegotiationRunner:
-    """Buffers perception frames per tick and runs negotiation when a tick completes.
-
-    A tick is complete when every squad agent has reported a frame for it. If a
-    frame for a newer tick arrives while an older tick is incomplete, the older
-    tick is flushed with whatever frames are present (slow agents forfeit).
-    """
+    """Buffers perception frames per tick and runs negotiation when a tick completes."""
 
     squad_id: str
     agent_ids: list[str]
     objective_ref: str = "breach-alpha"
     _negotiator: ReflexNegotiator = field(init=False)
     _graph: Any = field(init=False)
+    _strategy: StrategyLayer = field(default_factory=StrategyLayer, init=False)
     _pending: dict[int, dict[str, PerceptionFrame]] = field(default_factory=dict, init=False)
     _replan_count: int = 0
+    _last_doctrine_tick: int = 0
+    _strategy_task: asyncio.Task[DoctrineUpdate] | None = field(default=None, init=False)
+    _interrupt_started_at: float | None = field(default=None, init=False)
+    _lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False)
 
     def __post_init__(self) -> None:
         self._negotiator = ReflexNegotiator(squad_id=self.squad_id, agent_ids=self.agent_ids)
@@ -55,21 +67,56 @@ class LiveNegotiationRunner:
             checkpointer=MemorySaver()
         )
 
+    def apply_doctrine(self, doctrine: DoctrineUpdate) -> None:
+        self._negotiator.update_bidder_weights(doctrine.role_weights)
+        if doctrine.priority_objective:
+            self.objective_ref = doctrine.priority_objective
+
+    def schedule_strategy_refresh(
+        self,
+        tick: int,
+        context: str,
+        *,
+        after_replan: bool = False,
+        on_applied: DoctrineCallback | None = None,
+    ) -> None:
+        should_refresh = after_replan or (
+            tick - self._last_doctrine_tick >= DOCTRINE_REFRESH_INTERVAL_TICKS
+        )
+        if not should_refresh:
+            return
+        if self._strategy_task is not None and not self._strategy_task.done():
+            return
+
+        async def _run() -> DoctrineUpdate:
+            doctrine = await self._strategy.generate_doctrine(
+                self.squad_id, context, self.objective_ref
+            )
+            self.apply_doctrine(doctrine)
+            self._last_doctrine_tick = tick
+            if on_applied is not None:
+                await on_applied(doctrine)
+            return doctrine
+
+        self._strategy_task = asyncio.create_task(_run())
+
     async def ingest_frame(self, frame: PerceptionFrame) -> list[CycleResult]:
-        """Add a frame; return cycle results for any tick that became runnable."""
-        results: list[CycleResult] = []
+        async with self._lock:
+            if alert_level_rank(frame.alert_level) >= alert_level_rank(AlertLevel.ALERT):
+                if self._interrupt_started_at is None:
+                    self._interrupt_started_at = time.perf_counter()
 
-        # Flush strictly older, incomplete ticks before buffering the new frame.
-        stale_ticks = sorted(t for t in self._pending if t < frame.tick)
-        for tick in stale_ticks:
-            results.append(await self._run_cycle(tick))
+            results: list[CycleResult] = []
+            stale_ticks = sorted(t for t in self._pending if t < frame.tick)
+            for tick in stale_ticks:
+                results.append(await self._run_cycle(tick))
 
-        self._pending.setdefault(frame.tick, {})[frame.agent_id] = frame
+            self._pending.setdefault(frame.tick, {})[frame.agent_id] = frame
 
-        if len(self._pending[frame.tick]) >= len(self.agent_ids):
-            results.append(await self._run_cycle(frame.tick))
+            if len(self._pending[frame.tick]) >= len(self.agent_ids):
+                results.append(await self._run_cycle(frame.tick))
 
-        return results
+            return results
 
     async def _run_cycle(self, tick: int) -> CycleResult:
         frames = list(self._pending.pop(tick, {}).values())
@@ -86,12 +133,19 @@ class LiveNegotiationRunner:
         )
         latency_ms = (time.perf_counter() - start) * 1000
 
+        interrupted = bool(state.get("interrupted"))
+        recovery_ms: float | None = None
+        if interrupted and self._interrupt_started_at is not None:
+            recovery_ms = (time.perf_counter() - self._interrupt_started_at) * 1000
+            self._interrupt_started_at = None
+
         self._replan_count = state.get("replan_count", self._replan_count)
         directive = SquadDirective.model_validate(state["directive"])
         return CycleResult(
             directive=directive,
             latency_ms=latency_ms,
-            interrupted=bool(state.get("interrupted")),
+            interrupted=interrupted,
             replan_count=self._replan_count,
             objective_ref=state.get("objective_ref", self.objective_ref),
+            recovery_ms=recovery_ms,
         )
