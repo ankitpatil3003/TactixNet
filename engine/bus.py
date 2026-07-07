@@ -30,9 +30,9 @@ class MessageBus:
 
     async def close(self) -> None:
         if self._pubsub is not None:
-            await self._pubsub.close()
+            await self._pubsub.aclose()
         if self._client is not None:
-            await self._client.close()
+            await self._client.aclose()
 
     @property
     def client(self) -> redis.Redis:

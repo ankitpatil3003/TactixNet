@@ -2,6 +2,7 @@ name: breach-alpha
 tick_rate_hz: 20
 squad_size: 5
 objective: breach-gate
+objective_position: [16, 16]
 guards:
   - id: g1
     position: [10, 10]

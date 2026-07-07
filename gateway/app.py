@@ -1,9 +1,11 @@
 """FastAPI gateway: WebSocket hot path + REST control plane."""
 
 import json
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from contracts import (
@@ -35,9 +37,17 @@ class SquadStateResponse(BaseModel):
     last_directive: SquadDirective | None
 
 
+VIEWER_HTML = Path(__file__).resolve().parent.parent / "viewer" / "index.html"
+
+
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/viewer")
+async def viewer() -> FileResponse:
+    return FileResponse(VIEWER_HTML, media_type="text/html")
 
 
 @app.post("/squads", response_model=SquadStateResponse)
@@ -83,6 +93,17 @@ async def update_doctrine(squad_id: str, doctrine: DoctrineUpdate) -> SquadState
     return _session_to_response(session)
 
 
+async def _broadcast(sockets: set[Any], message: dict[str, Any]) -> None:
+    dead: list[Any] = []
+    for socket in sockets:
+        try:
+            await socket.send_json(message)
+        except Exception:
+            dead.append(socket)
+    for socket in dead:
+        sockets.discard(socket)
+
+
 @app.websocket("/ws/squads/{squad_id}")
 async def squad_websocket(websocket: WebSocket, squad_id: str) -> None:
     session = store.get(squad_id)
@@ -90,14 +111,38 @@ async def squad_websocket(websocket: WebSocket, squad_id: str) -> None:
         await websocket.close(code=4404, reason="Squad not found")
         return
 
+    mode = websocket.query_params.get("mode", "player")
     await websocket.accept()
+    session.sockets.add(websocket)
+    if mode == "observer":
+        session.observers.add(websocket)
+
     try:
         while True:
             raw = await websocket.receive_text()
+            if mode == "observer":
+                continue
+
             try:
                 payload = json.loads(raw)
+            except json.JSONDecodeError as exc:
+                error = ErrorResponse(
+                    code=ErrorCode.MALFORMED_FRAME,
+                    message="Invalid perception frame",
+                    detail=[{"error": str(exc)}],
+                )
+                await websocket.send_json({"type": "error", **error.model_dump()})
+                continue
+
+            # World snapshots are relayed to observers for rendering; they do
+            # not participate in negotiation.
+            if isinstance(payload, dict) and payload.get("type") == "world_snapshot":
+                await _broadcast(session.observers, payload)
+                continue
+
+            try:
                 frame = PerceptionFrame.model_validate(payload)
-            except (json.JSONDecodeError, ValidationError) as exc:
+            except ValidationError as exc:
                 error = ErrorResponse(
                     code=ErrorCode.MALFORMED_FRAME,
                     message="Invalid perception frame",
@@ -107,19 +152,20 @@ async def squad_websocket(websocket: WebSocket, squad_id: str) -> None:
                 continue
 
             session.perception_buffer.append(frame)
+            if len(session.perception_buffer) > 1000:
+                del session.perception_buffer[:-1000]
             session.tick = max(session.tick, frame.tick)
 
-            # Echo mode: acknowledge frame and echo back as directive placeholder
-            echo: dict[str, Any] = {
-                "type": "echo",
-                "squad_id": squad_id,
-                "tick": frame.tick,
-                "agent_id": frame.agent_id,
-                "alert_level": frame.alert_level.value,
-            }
-            await websocket.send_json(echo)
+            assert session.runner is not None
+            results = await session.runner.ingest_frame(frame)
+            for result in results:
+                session.last_directive = result.directive
+                await _broadcast(session.sockets, result.to_message())
     except WebSocketDisconnect:
-        return
+        pass
+    finally:
+        session.sockets.discard(websocket)
+        session.observers.discard(websocket)
 
 
 def _session_to_response(session: Any) -> SquadStateResponse:

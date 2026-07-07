@@ -6,58 +6,154 @@
   <title>TactixNet Viewer</title>
   <style>
     body { font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; padding: 1rem; }
-    canvas { background: #1e293b; border: 1px solid #334155; display: block; margin-top: 1rem; }
-    #status { color: #94a3b8; }
+    h1 { margin: 0 0 0.25rem 0; font-size: 1.3rem; }
+    #hud { display: flex; gap: 1.5rem; padding: 0.5rem 0; color: #94a3b8; font-size: 0.9rem; flex-wrap: wrap; }
+    #hud b { color: #e2e8f0; }
+    #replan { color: #f87171; font-weight: bold; opacity: 0; transition: opacity 0.3s; }
+    #replan.flash { opacity: 1; }
+    canvas { background: #1e293b; border: 1px solid #334155; display: block; margin-top: 0.5rem; }
+    #legend { margin-top: 0.5rem; font-size: 0.8rem; color: #94a3b8; }
+    .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin: 0 4px 0 12px; }
   </style>
 </head>
 <body>
   <h1>TactixNet Squad Viewer</h1>
-  <p id="status">Connecting...</p>
+  <div id="hud">
+    <span>Status: <b id="status">connecting…</b></span>
+    <span>Tick: <b id="tick">–</b></span>
+    <span>Directive seq: <b id="seq">–</b></span>
+    <span>Negotiation latency: <b id="latency">–</b></span>
+    <span>Replans: <b id="replans">0</b></span>
+    <span id="replan">⚠ REPLAN</span>
+  </div>
   <canvas id="grid" width="600" height="600"></canvas>
+  <div id="legend">
+    Agents:
+    <span class="dot" style="background:#4ade80"></span>calm
+    <span class="dot" style="background:#facc15"></span>suspicious
+    <span class="dot" style="background:#fb923c"></span>alert
+    <span class="dot" style="background:#f87171"></span>compromised
+    <span class="dot" style="background:#a78bfa"></span>guard (circle = vision range)
+  </div>
+
   <script>
+    const SCALE = 30;            // 20x20 grid on a 600px canvas
     const canvas = document.getElementById('grid');
     const ctx = canvas.getContext('2d');
-    const status = document.getElementById('status');
-    const squadId = new URLSearchParams(location.search).get('squad') || 'demo';
-    const wsUrl = `ws://${location.hostname}:8000/ws/squads/${squadId}`;
+
+    const el = (id) => document.getElementById(id);
+    const squadId = new URLSearchParams(location.search).get('squad');
+
+    const ALERT_COLORS = {
+      CALM: '#4ade80',
+      SUSPICIOUS: '#facc15',
+      ALERT: '#fb923c',
+      COMPROMISED: '#f87171',
+    };
+
+    let world = { agents: [], guards: [], tick: 0 };
+    let roles = {};             // agent_id -> role from the latest directive
+    let replanCount = 0;
 
     function drawGrid() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.strokeStyle = '#334155';
+      ctx.strokeStyle = '#293548';
       for (let i = 0; i <= 20; i++) {
         ctx.beginPath();
-        ctx.moveTo(i * 30, 0); ctx.lineTo(i * 30, 600);
-        ctx.moveTo(0, i * 30); ctx.lineTo(600, i * 30);
+        ctx.moveTo(i * SCALE, 0); ctx.lineTo(i * SCALE, 600);
+        ctx.moveTo(0, i * SCALE); ctx.lineTo(600, i * SCALE);
         ctx.stroke();
       }
     }
 
-    function drawAgents(awards) {
-      awards.forEach((award, i) => {
-        ctx.fillStyle = '#38bdf8';
+    function drawGuards() {
+      for (const guard of world.guards) {
+        const [x, y] = guard.position;
+        // vision range
+        ctx.fillStyle = 'rgba(167, 139, 250, 0.12)';
         ctx.beginPath();
-        ctx.arc(30 + i * 40, 300, 12, 0, Math.PI * 2);
+        ctx.arc(x * SCALE, y * SCALE, (guard.vision_range || 5) * SCALE, 0, Math.PI * 2);
+        ctx.fill();
+        // guard body
+        ctx.fillStyle = '#a78bfa';
+        ctx.beginPath();
+        ctx.arc(x * SCALE, y * SCALE, 9, 0, Math.PI * 2);
         ctx.fill();
         ctx.fillStyle = '#e2e8f0';
         ctx.font = '10px sans-serif';
-        ctx.fillText(award.role, 20 + i * 40, 330);
-      });
+        ctx.fillText(guard.id, x * SCALE - 8, y * SCALE - 14);
+      }
     }
 
-    drawGrid();
+    function drawAgents() {
+      for (const agent of world.agents) {
+        const [x, y] = agent.position;
+        ctx.fillStyle = ALERT_COLORS[agent.alert_level] || '#38bdf8';
+        ctx.beginPath();
+        ctx.arc(x * SCALE, y * SCALE, 10, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.fillStyle = '#e2e8f0';
+        ctx.font = 'bold 10px sans-serif';
+        ctx.fillText(agent.id, x * SCALE - 7, y * SCALE + 3);
+        const role = roles[agent.id];
+        if (role) {
+          ctx.fillStyle = '#94a3b8';
+          ctx.font = '10px sans-serif';
+          ctx.fillText(role, x * SCALE - 18, y * SCALE + 22);
+        }
+      }
+    }
 
-    try {
-      const ws = new WebSocket(wsUrl);
-      ws.onopen = () => { status.textContent = `Connected to squad ${squadId}`; };
-      ws.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        if (data.awards) drawAgents(data.awards);
-        else status.textContent = `Tick ${data.tick || '?'} — ${data.type || 'update'}`;
+    function render() {
+      drawGrid();
+      drawGuards();
+      drawAgents();
+    }
+
+    function flashReplan() {
+      const badge = el('replan');
+      badge.classList.add('flash');
+      setTimeout(() => badge.classList.remove('flash'), 1200);
+    }
+
+    function connect() {
+      if (!squadId) {
+        el('status').textContent = 'add ?squad=<squad-id> to the URL';
+        render();
+        return;
+      }
+      const ws = new WebSocket(`ws://${location.host}/ws/squads/${squadId}?mode=observer`);
+      ws.onopen = () => { el('status').textContent = `observing ${squadId.slice(0, 8)}…`; };
+      ws.onclose = () => {
+        el('status').textContent = 'disconnected — retrying in 2s';
+        setTimeout(connect, 2000);
       };
-      ws.onerror = () => { status.textContent = 'WebSocket error — start gateway first'; };
-    } catch (e) {
-      status.textContent = 'Viewer ready (connect gateway to stream directives)';
+      ws.onmessage = (event) => {
+        const message = JSON.parse(event.data);
+        if (message.type === 'world_snapshot') {
+          world = message;
+          el('tick').textContent = message.tick;
+          render();
+        } else if (message.type === 'directive') {
+          const directive = message.directive;
+          roles = Object.fromEntries(directive.awards.map(a => [a.agent_id, a.role]));
+          el('seq').textContent = directive.directive_seq;
+          el('latency').textContent = `${message.latency_ms} ms`;
+          if (message.interrupted) {
+            replanCount = message.replan_count;
+            el('replans').textContent = replanCount;
+            flashReplan();
+          }
+          render();
+        }
+      };
     }
+
+    render();
+    connect();
   </script>
 </body>
 </html>
