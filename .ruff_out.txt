@@ -1,0 +1,32 @@
+﻿[1mcontracts\__init__.py[0m[36m:[0m3[36m:[0m1[36m:[0m [1;31mI001[0m [[36m*[0m] Import block is un-sorted or un-formatted
+[1;38;5;12m   |[0m
+[1;38;5;12m 1 |[0m   """Shared Pydantic v2 contracts for TactixNet."""
+[1;38;5;12m 2 |[0m   
+[1;38;5;12m 3 |[0m [1;38;5;9m/[0m from contracts.enums import AlertLevel, RoleEnum
+[1;38;5;12m 4 |[0m [1;38;5;9m|[0m from contracts.events import (
+[1;38;5;12m 5 |[0m [1;38;5;9m|[0m     Bid,
+[1;38;5;12m 6 |[0m [1;38;5;9m|[0m     DoctrineUpdate,
+[1;38;5;12m 7 |[0m [1;38;5;9m|[0m     InterruptEvent,
+[1;38;5;12m 8 |[0m [1;38;5;9m|[0m     PerceptionFrame,
+[1;38;5;12m 9 |[0m [1;38;5;9m|[0m     RoleAward,
+[1;38;5;12m10 |[0m [1;38;5;9m|[0m     SquadDirective,
+[1;38;5;12m11 |[0m [1;38;5;9m|[0m     TaskAnnouncement,
+[1;38;5;12m12 |[0m [1;38;5;9m|[0m     VisibleEntity,
+[1;38;5;12m13 |[0m [1;38;5;9m|[0m )
+[1;38;5;12m14 |[0m [1;38;5;9m|[0m from contracts.errors import ErrorCode, ErrorResponse
+[1;38;5;12m15 |[0m [1;38;5;9m|[0m 
+[1;38;5;12m16 |[0m [1;38;5;9m|[0m __all__ = [
+[1;38;5;12m   |[0m [1;38;5;9m|[0m[1;38;5;9m_^[0m [1;38;5;9mI001[0m
+[1;38;5;12m17 |[0m       "AlertLevel",
+[1;38;5;12m18 |[0m       "RoleEnum",
+[1;38;5;12m   |[0m
+   [1;38;5;12m=[0m [1;38;5;14mhelp[0m: Organize imports
+
+[1mcontracts\errors.py[0m[36m:[0m11[36m:[0m1[36m:[0m [1;31mE402[0m Module level import not at top of file
+[1;38;5;12m   |[0m
+[1;38;5;12m11 |[0m from pydantic import BaseModel, ConfigDict, Field
+[1;38;5;12m   |[0m[1;38;5;9m ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m [1;38;5;9mE402[0m
+[1;38;5;12m   |[0m
+
+Found 2 errors.
+[[36m*[0m] 1 fixable with the `--fix` option.
