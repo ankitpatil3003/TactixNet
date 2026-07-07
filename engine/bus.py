@@ -26,6 +26,7 @@ class MessageBus:
 
     async def connect(self) -> None:
         self._client = redis.from_url(self._redis_url, decode_responses=True)
+        await self.client.ping()
 
     async def close(self) -> None:
         if self._pubsub is not None:
