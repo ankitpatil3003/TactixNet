@@ -60,7 +60,7 @@ class MessageBus:
 
     async def subscribe(self, squad_id: str, *channels: str) -> redis.client.PubSub:
         if self._pubsub is not None:
-            await self._pubsub.close()
+            await self._pubsub.aclose()
         self._pubsub = self.client.pubsub()
         names = [squad_channel(squad_id, ch) for ch in channels]
         await self._pubsub.subscribe(*names)

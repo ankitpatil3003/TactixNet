@@ -30,6 +30,8 @@ class BenchmarkResult:
     mean_ms: float
     max_ms: float
     latencies: list[float] | None = None
+    recovery_p50_ms: float | None = None
+    recovery_p95_ms: float | None = None
 
 
 def default_sim() -> GridSim:
@@ -84,6 +86,49 @@ def inject_alert_mid_cycle(frames: list[PerceptionFrame]) -> list[PerceptionFram
     return [first, *frames[1:]]
 
 
+async def run_recovery_benchmark(samples: int = 50) -> list[float]:
+    """Measure interrupt-to-replan recovery_ms via the live runner."""
+    from gateway.live import LiveNegotiationRunner
+
+    agent_ids = [f"a{i}" for i in range(1, 6)]
+    recoveries: list[float] = []
+
+    for i in range(samples):
+        runner = LiveNegotiationRunner(squad_id=f"recovery-{i}", agent_ids=agent_ids)
+        tick = 1
+        calm_frames = [
+            PerceptionFrame(
+                agent_id=aid,
+                tick=tick,
+                position=(float(int(aid[-1])), 0.0),
+                heading=0.0,
+                visibility_polygon=[(0, 0), (1, 0), (1, 1)],
+                alert_level=AlertLevel.CALM,
+            )
+            for aid in agent_ids
+        ]
+        for frame in calm_frames:
+            await runner.ingest_frame(frame)
+
+        alert_frames = [
+            calm_frames[0].model_copy(update={"alert_level": AlertLevel.ALERT, "tick": tick + 1}),
+            *[f.model_copy(update={"tick": tick + 1}) for f in calm_frames[1:]],
+        ]
+        for frame in alert_frames:
+            results = await runner.ingest_frame(frame)
+            for result in results:
+                if result.recovery_ms is not None:
+                    recoveries.append(result.recovery_ms)
+
+    return recoveries
+
+
+def _percentile(values: list[float], p: float) -> float:
+    ordered = sorted(values)
+    idx = min(int(len(ordered) * p), len(ordered) - 1)
+    return ordered[idx]
+
+
 def ascii_histogram(latencies: list[float], buckets: int = 12, width: int = 40) -> str:
     """Render a fixed-width ASCII histogram of latency samples."""
     if not latencies:
@@ -106,6 +151,12 @@ def ascii_histogram(latencies: list[float], buckets: int = 12, width: int = 40) 
 
 def format_report(result: BenchmarkResult) -> str:
     histogram = ascii_histogram(result.latencies or [])
+    recovery_p50 = (
+        f"{result.recovery_p50_ms:.2f} ms" if result.recovery_p50_ms is not None else "n/a"
+    )
+    recovery_p95 = (
+        f"{result.recovery_p95_ms:.2f} ms" if result.recovery_p95_ms is not None else "n/a"
+    )
     return f"""# Benchmark Results
 
 Generated: {datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")}
@@ -131,6 +182,13 @@ Generated: {datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")}
 
 Target: p95 < 150 ms — {"MET" if result.p95_ms < 150 else "NOT MET"}
 
+## Interrupt Recovery (ALERT ingest → replanned directive)
+
+| Metric | Value |
+|--------|-------|
+| recovery p50 | {recovery_p50} |
+| recovery p95 | {recovery_p95} |
+
 ## Latency Distribution
 
 ```
@@ -145,6 +203,10 @@ Reproduce with `python -m simulation.benchmark --ticks {result.samples}`.
 async def _main_async(ticks: int, report_path: Path | None) -> None:
     print(f"Running reflex benchmark: {ticks} ticks, 5 agents...")
     result = await run_reflex_benchmark(ticks=ticks, keep_latencies=True)
+    recoveries = await run_recovery_benchmark(samples=min(50, max(10, ticks // 200)))
+    if recoveries:
+        result.recovery_p50_ms = _percentile(recoveries, 0.50)
+        result.recovery_p95_ms = _percentile(recoveries, 0.95)
 
     print(f"\n{'Metric':<10} {'Value':>12}")
     print("-" * 23)
@@ -154,6 +216,8 @@ async def _main_async(ticks: int, report_path: Path | None) -> None:
     print(f"{'p99':<10} {result.p99_ms:>10.2f}ms")
     print(f"{'mean':<10} {result.mean_ms:>10.2f}ms")
     print(f"{'max':<10} {result.max_ms:>10.2f}ms")
+    if result.recovery_p95_ms is not None:
+        print(f"{'recv p95':<10} {result.recovery_p95_ms:>10.2f}ms")
     print(f"\np95 < 150ms target: {'MET' if result.p95_ms < 150 else 'NOT MET'}")
 
     if report_path is not None:

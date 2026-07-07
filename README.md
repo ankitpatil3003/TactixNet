@@ -68,8 +68,11 @@ cp .env.example .env          # set GROQ_API_KEY only if you want Tier-2
 # 1. Gateway
 uvicorn gateway.app:app --port 8000
 
-# 2. Demo driver: 5-agent squad advances toward a patrolled objective at 10Hz
+# 2. Demo driver: agents execute awarded roles; guards patrol/investigate/chase
 python -m simulation.run_demo --hz 10 --ticks 300
+
+# Optional: multiple concurrent squads
+python -m simulation.run_demo --hz 10 --ticks 300 --squads 2
 ```
 
 The driver prints the viewer URL, e.g.:
@@ -81,9 +84,16 @@ tick=1 seq=1 latency=1.2ms roles={'a1': 'flank', 'a2': 'distract', ...}
 tick=42 seq=42 latency=1.4ms roles={...} [REPLAN]
 ```
 
-**3. Open the viewer URL in a browser.** You'll see the squad advancing on the grid, guards with vision circles, agents color-coded by alert level (green → yellow → orange → red), awarded roles under each agent, and a HUD with tick / directive seq / negotiation latency / replan counter. When agents enter a guard's vision, the replan badge flashes and roles reshuffle live.
+**3. Open the viewer URL in a browser.** Agents are color-coded by alert level, labeled with their awarded role, and guards show vision circles. When a guard spots the squad, the REPLAN badge flashes, `recovery_ms` appears in the HUD, and roles reshuffle live.
 
-*(Screenshot/GIF: run the demo and capture the viewer — a 10–15 s clip of a replan cascade makes a great demo.)*
+**4. Replay a finished session:** `http://localhost:8000/viewer?squad=<id>&replay=1` (loads events from `GET /squads/{id}/events`).
+
+**5. Apply doctrine manually (Tier-2 weights without waiting for Groq):**
+```bash
+curl -X POST http://localhost:8000/squads/<id>/doctrine \
+  -H "Content-Type: application/json" \
+  -d '{"squad_id":"<id>","role_weights":{"distract":3.0,"flank":0.5},"priority_objective":"breach-gate"}'
+```
 
 ## Benchmarks
 
@@ -121,7 +131,8 @@ tactixnet/
 | `/health` | GET | Liveness check |
 | `/squads` | POST | Create a squad session — `{"agent_ids": ["a1", ...]}` |
 | `/squads/{id}` | GET | Squad state incl. `last_directive` |
-| `/squads/{id}/doctrine` | POST | Update Tier-2 doctrine (role weights) |
+| `/squads/{id}/doctrine` | POST | Update strategy doctrine (applies weights to live negotiation immediately) |
+| `/squads/{id}/events` | GET | Event log for replay (`?count=500`) |
 | `/viewer` | GET | Canvas viewer page |
 
 ### WebSocket `/ws/squads/{id}`
@@ -153,11 +164,22 @@ tactixnet/
   },
   "latency_ms": 1.2,
   "interrupted": false,
-  "replan_count": 0
+  "replan_count": 0,
+  "recovery_ms": 2.5
 }
 ```
 
 Connect with `?mode=observer` to receive directives and `world_snapshot` relays without participating (used by the viewer). Malformed frames get a structured `{"type": "error", "code": "MALFORMED_FRAME", ...}` reply.
+
+## v1.2 Highlights
+
+- **Doctrine is live:** `POST /doctrine` and async Groq strategy refresh apply weights to the reflex bidder; broadcasts `{"type": "doctrine"}` on update.
+- **Event sourcing:** all perception/directive/interrupt events logged (Redis + in-memory fallback); replay in the viewer.
+- **Living world:** guards chase spotted agents; demo agents move by awarded role; `COMPROMISED` after sustained close contact.
+- **recovery_ms:** measured interrupt-to-replan latency on every interrupted cycle.
+- **Concurrency:** per-session locks, multi-squad isolation, opt-in soak test (`pytest -m soak`).
+
+See [CHANGELOG.md](CHANGELOG.md) for full release notes.
 
 ## Design Decisions
 

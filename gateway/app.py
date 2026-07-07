@@ -1,6 +1,9 @@
 """FastAPI gateway: WebSocket hot path + REST control plane."""
 
+from __future__ import annotations
+
 import json
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -15,10 +18,22 @@ from contracts import (
     PerceptionFrame,
     SquadDirective,
 )
-from gateway.sessions import SessionStore
+from gateway.events import SquadEventLogger
+from gateway.live import CycleResult
+from gateway.sessions import SessionStore, SquadSession
 
-app = FastAPI(title="TactixNet Gateway", version="0.1.0")
+event_logger = SquadEventLogger()
 store = SessionStore()
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    await event_logger.connect()
+    yield
+    await event_logger.close()
+
+
+app = FastAPI(title="TactixNet Gateway", version="0.2.0", lifespan=lifespan)
 
 
 class CreateSquadRequest(BaseModel):
@@ -42,7 +57,7 @@ VIEWER_HTML = Path(__file__).resolve().parent.parent / "viewer" / "index.html"
 
 @app.get("/health")
 async def health() -> dict[str, str]:
-    return {"status": "ok"}
+    return {"status": "ok", "event_log": "connected" if event_logger.available else "offline"}
 
 
 @app.get("/viewer")
@@ -70,6 +85,29 @@ async def get_squad_state(squad_id: str) -> SquadStateResponse:
     return _session_to_response(session)
 
 
+@app.get("/squads/{squad_id}/events")
+async def get_squad_events(squad_id: str, count: int = 100) -> dict[str, Any]:
+    session = store.get(squad_id)
+    if session is None:
+        raise HTTPException(
+            status_code=404,
+            detail=ErrorResponse(
+                code=ErrorCode.SQUAD_NOT_FOUND,
+                message=f"Squad {squad_id} not found",
+            ).model_dump(),
+        )
+    events = await event_logger.read(squad_id, count=count)
+    parsed = []
+    for entry in reversed(events):
+        payload_raw = entry.get("payload", "{}")
+        try:
+            payload = json.loads(payload_raw)
+        except json.JSONDecodeError:
+            payload = {"raw": payload_raw}
+        parsed.append({"id": entry.get("id"), "type": entry.get("type"), "payload": payload})
+    return {"squad_id": squad_id, "events": parsed}
+
+
 @app.post("/squads/{squad_id}/doctrine", response_model=SquadStateResponse)
 async def update_doctrine(squad_id: str, doctrine: DoctrineUpdate) -> SquadStateResponse:
     session = store.get(squad_id)
@@ -89,7 +127,7 @@ async def update_doctrine(squad_id: str, doctrine: DoctrineUpdate) -> SquadState
                 message="doctrine.squad_id must match path squad_id",
             ).model_dump(),
         )
-    session.doctrine = doctrine
+    await _apply_doctrine(session, doctrine, source="rest")
     return _session_to_response(session)
 
 
@@ -102,6 +140,61 @@ async def _broadcast(sockets: set[Any], message: dict[str, Any]) -> None:
             dead.append(socket)
     for socket in dead:
         sockets.discard(socket)
+
+
+async def _apply_doctrine(
+    session: SquadSession, doctrine: DoctrineUpdate, *, source: str
+) -> None:
+    session.doctrine = doctrine
+    if session.runner is not None:
+        session.runner.apply_doctrine(doctrine)
+    message = {
+        "type": "doctrine",
+        "source": source,
+        "doctrine": doctrine.model_dump(mode="json"),
+    }
+    await _broadcast(session.sockets, message)
+    await event_logger.log(session.squad_id, "doctrine", message)
+
+
+async def _handle_cycle_results(
+    session: SquadSession, frame: PerceptionFrame, results: list[CycleResult]
+) -> None:
+    for result in results:
+        session.last_directive = result.directive
+        message = result.to_message()
+        await _broadcast(session.sockets, message)
+        await event_logger.log(session.squad_id, "directive", message)
+        if result.interrupted:
+            await event_logger.log(
+                session.squad_id,
+                "interrupt",
+                {
+                    "tick": frame.tick,
+                    "recovery_ms": result.recovery_ms,
+                    "replan_count": result.replan_count,
+                },
+            )
+
+    if session.runner is None or not results:
+        return
+
+    last = results[-1]
+    context = (
+        f"tick={frame.tick} interrupted={last.interrupted} "
+        f"replans={last.replan_count} objective={last.objective_ref}"
+    )
+
+    async def on_doctrine_applied(doctrine: DoctrineUpdate) -> None:
+        session.doctrine = doctrine
+        await _apply_doctrine(session, doctrine, source="strategy")
+
+    session.runner.schedule_strategy_refresh(
+        tick=frame.tick,
+        context=context,
+        after_replan=last.interrupted,
+        on_applied=on_doctrine_applied,
+    )
 
 
 @app.websocket("/ws/squads/{squad_id}")
@@ -134,10 +227,9 @@ async def squad_websocket(websocket: WebSocket, squad_id: str) -> None:
                 await websocket.send_json({"type": "error", **error.model_dump()})
                 continue
 
-            # World snapshots are relayed to observers for rendering; they do
-            # not participate in negotiation.
             if isinstance(payload, dict) and payload.get("type") == "world_snapshot":
                 await _broadcast(session.observers, payload)
+                await event_logger.log(session.squad_id, "world_snapshot", payload)
                 continue
 
             try:
@@ -156,11 +248,15 @@ async def squad_websocket(websocket: WebSocket, squad_id: str) -> None:
                 del session.perception_buffer[:-1000]
             session.tick = max(session.tick, frame.tick)
 
+            await event_logger.log(
+                session.squad_id,
+                "perception",
+                frame.model_dump(mode="json"),
+            )
+
             assert session.runner is not None
             results = await session.runner.ingest_frame(frame)
-            for result in results:
-                session.last_directive = result.directive
-                await _broadcast(session.sockets, result.to_message())
+            await _handle_cycle_results(session, frame, results)
     except WebSocketDisconnect:
         pass
     finally:
@@ -168,7 +264,7 @@ async def squad_websocket(websocket: WebSocket, squad_id: str) -> None:
         session.observers.discard(websocket)
 
 
-def _session_to_response(session: Any) -> SquadStateResponse:
+def _session_to_response(session: SquadSession) -> SquadStateResponse:
     return SquadStateResponse(
         squad_id=session.squad_id,
         agent_ids=session.agent_ids,
