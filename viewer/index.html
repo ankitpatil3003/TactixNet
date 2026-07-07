@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TactixNet Viewer</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; padding: 1rem; }
+    canvas { background: #1e293b; border: 1px solid #334155; display: block; margin-top: 1rem; }
+    #status { color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <h1>TactixNet Squad Viewer</h1>
+  <p id="status">Connecting...</p>
+  <canvas id="grid" width="600" height="600"></canvas>
+  <script>
+    const canvas = document.getElementById('grid');
+    const ctx = canvas.getContext('2d');
+    const status = document.getElementById('status');
+    const squadId = new URLSearchParams(location.search).get('squad') || 'demo';
+    const wsUrl = `ws://${location.hostname}:8000/ws/squads/${squadId}`;
+
+    function drawGrid() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.strokeStyle = '#334155';
+      for (let i = 0; i <= 20; i++) {
+        ctx.beginPath();
+        ctx.moveTo(i * 30, 0); ctx.lineTo(i * 30, 600);
+        ctx.moveTo(0, i * 30); ctx.lineTo(600, i * 30);
+        ctx.stroke();
+      }
+    }
+
+    function drawAgents(awards) {
+      awards.forEach((award, i) => {
+        ctx.fillStyle = '#38bdf8';
+        ctx.beginPath();
+        ctx.arc(30 + i * 40, 300, 12, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#e2e8f0';
+        ctx.font = '10px sans-serif';
+        ctx.fillText(award.role, 20 + i * 40, 330);
+      });
+    }
+
+    drawGrid();
+
+    try {
+      const ws = new WebSocket(wsUrl);
+      ws.onopen = () => { status.textContent = `Connected to squad ${squadId}`; };
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.awards) drawAgents(data.awards);
+        else status.textContent = `Tick ${data.tick || '?'} — ${data.type || 'update'}`;
+      };
+      ws.onerror = () => { status.textContent = 'WebSocket error — start gateway first'; };
+    } catch (e) {
+      status.textContent = 'Viewer ready (connect gateway to stream directives)';
+    }
+  </script>
+</body>
+</html>
