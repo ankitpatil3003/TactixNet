@@ -1,0 +1,17 @@
+[project]
+name = "tactixnet"
+version = "0.1.0"
+description = "Decentralized multi-agent coordination engine for real-time tactics games"
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
