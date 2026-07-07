@@ -25,6 +25,10 @@
     <span>Negotiation latency: <b id="latency">–</b></span>
     <span>Replans: <b id="replans">0</b></span>
     <span id="replan">⚠ REPLAN</span>
+    <span id="replay-controls" style="display:none">
+      <button id="replay-play">Play</button>
+      <label>Speed <input id="replay-speed" type="range" min="1" max="20" value="5" /></label>
+    </span>
   </div>
   <canvas id="grid" width="600" height="600"></canvas>
   <div id="legend">
@@ -43,6 +47,7 @@
 
     const el = (id) => document.getElementById(id);
     const squadId = new URLSearchParams(location.search).get('squad');
+    const replayMode = new URLSearchParams(location.search).get('replay') === '1';
 
     const ALERT_COLORS = {
       CALM: '#4ade80',
@@ -119,10 +124,63 @@
       setTimeout(() => badge.classList.remove('flash'), 1200);
     }
 
+    function handleMessage(message) {
+      if (message.type === 'world_snapshot') {
+        world = message;
+        el('tick').textContent = message.tick;
+        render();
+      } else if (message.type === 'directive') {
+        const directive = message.directive;
+        roles = Object.fromEntries(directive.awards.map(a => [a.agent_id, a.role]));
+        el('seq').textContent = directive.directive_seq;
+        el('latency').textContent = `${message.latency_ms} ms`;
+        if (message.recovery_ms != null) {
+          el('latency').textContent += ` (recovery ${message.recovery_ms} ms)`;
+        }
+        if (message.interrupted) {
+          replanCount = message.replan_count;
+          el('replans').textContent = replanCount;
+          flashReplan();
+        }
+        render();
+      }
+    }
+
+    async function startReplay() {
+      el('replay-controls').style.display = 'inline';
+      el('status').textContent = 'loading replay…';
+      const response = await fetch(`/squads/${squadId}/events?count=500`);
+      const data = await response.json();
+      const events = data.events || [];
+      let index = 0;
+      let playing = false;
+
+      el('replay-play').onclick = () => { playing = !playing; el('replay-play').textContent = playing ? 'Pause' : 'Play'; };
+
+      async function tickReplay() {
+        if (!playing || index >= events.length) return;
+        const event = events[index++];
+        if (event.type === 'world_snapshot' || event.type === 'directive') {
+          handleMessage(event.payload);
+        }
+        const speed = Number(el('replay-speed').value);
+        setTimeout(tickReplay, 200 / speed);
+      }
+
+      el('status').textContent = `replay loaded (${events.length} events)`;
+      playing = true;
+      el('replay-play').textContent = 'Pause';
+      tickReplay();
+    }
+
     function connect() {
       if (!squadId) {
         el('status').textContent = 'add ?squad=<squad-id> to the URL';
         render();
+        return;
+      }
+      if (replayMode) {
+        startReplay();
         return;
       }
       const ws = new WebSocket(`ws://${location.host}/ws/squads/${squadId}?mode=observer`);
@@ -132,23 +190,7 @@
         setTimeout(connect, 2000);
       };
       ws.onmessage = (event) => {
-        const message = JSON.parse(event.data);
-        if (message.type === 'world_snapshot') {
-          world = message;
-          el('tick').textContent = message.tick;
-          render();
-        } else if (message.type === 'directive') {
-          const directive = message.directive;
-          roles = Object.fromEntries(directive.awards.map(a => [a.agent_id, a.role]));
-          el('seq').textContent = directive.directive_seq;
-          el('latency').textContent = `${message.latency_ms} ms`;
-          if (message.interrupted) {
-            replanCount = message.replan_count;
-            el('replans').textContent = replanCount;
-            flashReplan();
-          }
-          render();
-        }
+        handleMessage(JSON.parse(event.data));
       };
     }
 
