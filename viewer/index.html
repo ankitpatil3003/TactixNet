@@ -149,28 +149,110 @@
     async function startReplay() {
       el('replay-controls').style.display = 'inline';
       el('status').textContent = 'loading replay…';
-      const response = await fetch(`/squads/${squadId}/events?count=500`);
-      const data = await response.json();
-      const events = data.events || [];
-      let index = 0;
-      let playing = false;
 
-      el('replay-play').onclick = () => { playing = !playing; el('replay-play').textContent = playing ? 'Pause' : 'Play'; };
-
-      async function tickReplay() {
-        if (!playing || index >= events.length) return;
-        const event = events[index++];
-        if (event.type === 'world_snapshot' || event.type === 'directive') {
-          handleMessage(event.payload);
-        }
-        const speed = Number(el('replay-speed').value);
-        setTimeout(tickReplay, 200 / speed);
+      let events = [];
+      let truncated = false;
+      try {
+        const response = await fetch(
+          `/squads/${squadId}/events?count=10000&replay_only=true`
+        );
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        events = data.events || [];
+        truncated = Boolean(data.truncated);
+      } catch (err) {
+        el('status').textContent = `replay failed: ${err.message}`;
+        return;
       }
 
-      el('status').textContent = `replay loaded (${events.length} events)`;
-      playing = true;
-      el('replay-play').textContent = 'Pause';
-      tickReplay();
+      if (events.length === 0) {
+        el('status').textContent = 'no replay events — run a demo first';
+        return;
+      }
+
+      let index = 0;
+      let playing = false;
+      let timerId = null;
+      let maxTick = 0;
+
+      function parsePayload(payload) {
+        if (typeof payload === 'string') {
+          try { return JSON.parse(payload); } catch { return null; }
+        }
+        return payload;
+      }
+
+      function tickFromEntry(entry) {
+        const payload = parsePayload(entry.payload);
+        if (!payload) return 0;
+        if (entry.type === 'world_snapshot') return payload.tick ?? 0;
+        if (entry.type === 'directive') return payload.directive?.tick ?? payload.tick ?? 0;
+        return 0;
+      }
+
+      for (const entry of events) {
+        maxTick = Math.max(maxTick, tickFromEntry(entry));
+      }
+
+      function applyEvent(entry) {
+        const payload = parsePayload(entry.payload);
+        if (!payload) return;
+        const message = payload.type ? payload : { ...payload, type: entry.type };
+        if (message.type === 'world_snapshot' || message.type === 'directive') {
+          handleMessage(message);
+        }
+      }
+
+      function currentTick() {
+        const tickText = el('tick').textContent;
+        const n = Number(tickText);
+        return Number.isFinite(n) ? n : 0;
+      }
+
+      function scheduleNext() {
+        if (timerId) {
+          clearTimeout(timerId);
+          timerId = null;
+        }
+        if (!playing) return;
+        if (index >= events.length) {
+          playing = false;
+          el('replay-play').textContent = 'Play';
+          el('status').textContent = `replay finished (tick ${maxTick})`;
+          return;
+        }
+        applyEvent(events[index++]);
+        el('status').textContent = `replaying tick ${currentTick()}/${maxTick} (${index}/${events.length})`;
+        const speed = Number(el('replay-speed').value) || 5;
+        timerId = setTimeout(scheduleNext, 200 / speed);
+      }
+
+      el('replay-play').onclick = () => {
+        playing = !playing;
+        el('replay-play').textContent = playing ? 'Pause' : 'Play';
+        if (playing) {
+          if (index >= events.length) {
+            index = 0;
+            el('tick').textContent = '–';
+            el('seq').textContent = '–';
+            el('latency').textContent = '–';
+            replanCount = 0;
+            el('replans').textContent = '0';
+          }
+          scheduleNext();
+        } else if (timerId) {
+          clearTimeout(timerId);
+          timerId = null;
+        }
+      };
+
+      el('replay-speed').oninput = () => {
+        if (playing) scheduleNext();
+      };
+
+      const truncNote = truncated ? ' (truncated — increase count)' : '';
+      el('status').textContent =
+        `replay ready: ${events.length} frames, ticks 1–${maxTick}${truncNote} — press Play`;
     }
 
     function connect() {

@@ -41,6 +41,34 @@ def test_events_logged_after_websocket_activity() -> None:
     assert "directive" in types
 
 
+def test_events_replay_only_filters_perception() -> None:
+    create = client.post("/squads", json={"agent_ids": ["a1"]})
+    squad_id = create.json()["squad_id"]
+
+    frame = {
+        "agent_id": "a1",
+        "tick": 1,
+        "position": [1.0, 2.0],
+        "heading": 0.0,
+        "visibility_polygon": [[0, 0], [1, 0], [1, 1]],
+        "alert_level": "CALM",
+    }
+    with client.websocket_connect(f"/ws/squads/{squad_id}") as ws:
+        ws.send_text(json.dumps(frame))
+        ws.receive_json()
+
+    all_events = client.get(f"/squads/{squad_id}/events").json()["events"]
+    replay_events = client.get(
+        f"/squads/{squad_id}/events?replay_only=true"
+    ).json()["events"]
+    all_types = {e["type"] for e in all_events}
+    replay_types = {e["type"] for e in replay_events}
+
+    assert "perception" in all_types
+    assert "perception" not in replay_types
+    assert replay_types <= {"world_snapshot", "directive"}
+
+
 @pytest.mark.asyncio
 async def test_event_logger_memory_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
     from gateway.events import SquadEventLogger

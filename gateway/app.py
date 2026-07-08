@@ -86,17 +86,26 @@ async def get_squad_state(squad_id: str) -> SquadStateResponse:
 
 
 @app.get("/squads/{squad_id}/events")
-async def get_squad_events(squad_id: str, count: int = 100) -> dict[str, Any]:
+async def get_squad_events(
+    squad_id: str,
+    count: int = 100,
+    replay_only: bool = False,
+) -> dict[str, Any]:
     session = store.get(squad_id)
     if session is None:
-        raise HTTPException(
-            status_code=404,
-            detail=ErrorResponse(
-                code=ErrorCode.SQUAD_NOT_FOUND,
-                message=f"Squad {squad_id} not found",
-            ).model_dump(),
-        )
-    events = await event_logger.read(squad_id, count=count)
+        # Allow replay fetch when events exist but session was dropped (e.g. after restart).
+        probe = await event_logger.read(squad_id, count=1)
+        if not probe:
+            raise HTTPException(
+                status_code=404,
+                detail=ErrorResponse(
+                    code=ErrorCode.SQUAD_NOT_FOUND,
+                    message=f"Squad {squad_id} not found",
+                ).model_dump(),
+            )
+
+    fetch_count = count if count > 0 else 10_000
+    events = await event_logger.read(squad_id, count=fetch_count)
     parsed = []
     for entry in reversed(events):
         payload_raw = entry.get("payload", "{}")
@@ -104,8 +113,16 @@ async def get_squad_events(squad_id: str, count: int = 100) -> dict[str, Any]:
             payload = json.loads(payload_raw)
         except json.JSONDecodeError:
             payload = {"raw": payload_raw}
-        parsed.append({"id": entry.get("id"), "type": entry.get("type"), "payload": payload})
-    return {"squad_id": squad_id, "events": parsed}
+        event_type = entry.get("type")
+        if replay_only and event_type not in {"world_snapshot", "directive"}:
+            continue
+        parsed.append({"id": entry.get("id"), "type": event_type, "payload": payload})
+    return {
+        "squad_id": squad_id,
+        "events": parsed,
+        "total": len(parsed),
+        "truncated": len(events) >= fetch_count,
+    }
 
 
 @app.post("/squads/{squad_id}/doctrine", response_model=SquadStateResponse)
