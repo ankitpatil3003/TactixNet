@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.3.1
+
+### Fixed
+- Interrupt replans clear role cooldown so contact renegotiation always awards roles.
+- Demo retains last assigned roles when cooldown blocks bidding (default `STEALTH_COVER` instead of `BREACH`).
+- Guard tuning: shorter vision, slower chase, compromise after 4 ticks (was 2).
+- Alert-aware movement: agents flee/slow under `ALERT+` instead of charging into guards.
+- Double compromise counting when perceptions run twice in the same tick.
+
 ## v1.3.0
 
 ### Added
