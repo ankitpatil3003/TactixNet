@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -12,6 +13,7 @@ from langgraph.checkpoint.memory import MemorySaver
 
 from contracts import DoctrineUpdate, PerceptionFrame, SquadDirective, alert_level_rank
 from contracts.enums import AlertLevel
+from engine.checkpoint import RedisCheckpointSaver
 from engine.graph import build_negotiation_graph
 from engine.negotiation import ReflexNegotiator
 from engine.strategy import StrategyLayer
@@ -51,6 +53,7 @@ class LiveNegotiationRunner:
     squad_id: str
     agent_ids: list[str]
     objective_ref: str = "breach-alpha"
+    checkpoint_bus: Any | None = None
     _negotiator: ReflexNegotiator = field(init=False)
     _graph: Any = field(init=False)
     _strategy: StrategyLayer = field(default_factory=StrategyLayer, init=False)
@@ -63,9 +66,12 @@ class LiveNegotiationRunner:
 
     def __post_init__(self) -> None:
         self._negotiator = ReflexNegotiator(squad_id=self.squad_id, agent_ids=self.agent_ids)
-        self._graph = build_negotiation_graph(self._negotiator).compile(
-            checkpointer=MemorySaver()
-        )
+        checkpointer: Any
+        if self.checkpoint_bus is not None and os.environ.get("USE_REDIS_CHECKPOINT") == "1":
+            checkpointer = RedisCheckpointSaver(self.checkpoint_bus)
+        else:
+            checkpointer = MemorySaver()
+        self._graph = build_negotiation_graph(self._negotiator).compile(checkpointer=checkpointer)
 
     def apply_doctrine(self, doctrine: DoctrineUpdate) -> None:
         self._negotiator.update_bidder_weights(doctrine.role_weights)

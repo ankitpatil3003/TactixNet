@@ -1,5 +1,23 @@
 # Changelog
 
+## v1.3.0
+
+### Added
+- Redis-backed session metadata persistence (`squad:{id}:meta`) with lazy rehydration after gateway restart.
+- `GET /squads/{id}/scenario` for viewer grid sizing and scenario metadata.
+- Python client SDK (`client.SquadClient`) for REST + WebSocket integration.
+- Scenario-driven demos: YAML `tick_rate_hz`, `objective`, `squad_size`, `grid_size`; new `ambush` scenario.
+- Role bid cooldown after awards (`cooldown_ticks` on frames + negotiator-side cooldown).
+- E2E smoke test (subprocess uvicorn), Redis integration tests, nightly soak workflow.
+- Viewer doctrine panel and dedicated recovery HUD field.
+- Optional `USE_REDIS_CHECKPOINT=1` for Redis-backed LangGraph checkpoints.
+
+### Changed
+- `docker compose up` runs redis + gateway only (removed broken `engine` service).
+- Demo driver uses `SquadClient` and scenario defaults for tick rate.
+- Gateway version 0.3.0; package version 0.3.0.
+- Replay fetches full session with `replay_only=true` (from v1.2.1 patch).
+
 ## v1.2.0
 
 ### Added
