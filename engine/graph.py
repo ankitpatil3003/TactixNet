@@ -106,6 +106,7 @@ def _make_collect_bids(negotiator: ReflexNegotiator):
             frames,
             objective_ref=state.get("objective_ref", "default"),
             tick=state.get("tick", 0),
+            interrupted=bool(state.get("interrupted")),
         )
         return {
             **state,
