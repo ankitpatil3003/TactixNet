@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from client import SquadClient
-from contracts import RoleEnum
+from contracts import AlertLevel, RoleEnum
 from simulation.grid import GridSim, Guard, SquadAgent
 from simulation.movement import step_agent_by_role
 from simulation.scenario import ScenarioConfig, load_scenario
@@ -84,7 +84,7 @@ async def run_demo(
     stats = {"directives": 0, "replans": 0}
     prefix = f"[squad-{squad_index}] " if squad_index else ""
     print(f"{prefix}Squad {squad_id} created — streaming {ticks} ticks at {effective_hz}Hz")
-    print(f"{prefix}Scenario: {scenario.name} → {scenario.objective}")
+    print(f"{prefix}Scenario: {scenario.name} -> {scenario.objective}")
     print(f"{prefix}Viewer: {gateway}/viewer?squad={squad_id}")
 
     await client.connect()
@@ -95,8 +95,9 @@ async def run_demo(
             if message.get("type") == "directive":
                 stats["directives"] += 1
                 directive = message["directive"]
-                for award in directive["awards"]:
-                    roles[award["agent_id"]] = RoleEnum(award["role"])
+                if directive["awards"]:
+                    for award in directive["awards"]:
+                        roles[award["agent_id"]] = RoleEnum(award["role"])
                 role_map = {a["agent_id"]: a["role"] for a in directive["awards"]}
                 flag = " [REPLAN]" if message.get("interrupted") else ""
                 if message.get("interrupted"):
@@ -117,9 +118,17 @@ async def run_demo(
     try:
         for _ in range(ticks):
             sim.advance_tick()
+            frames = sim.all_perceptions()
+            alert_by_agent = {f.agent_id: f.alert_level for f in frames}
             for agent in sim.agents:
-                role = roles.get(agent.agent_id, RoleEnum.BREACH)
-                step_agent_by_role(sim, agent, role, objective)
+                role = roles.get(agent.agent_id, RoleEnum.STEALTH_COVER)
+                step_agent_by_role(
+                    sim,
+                    agent,
+                    role,
+                    objective,
+                    alert_level=alert_by_agent.get(agent.agent_id, AlertLevel.CALM),
+                )
             await client.send_snapshot(world_snapshot(sim))
             for frame in sim.all_perceptions():
                 await client.send_frame(frame)

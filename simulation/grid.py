@@ -12,7 +12,7 @@ class Guard:
     guard_id: str
     position: tuple[float, float]
     patrol_route: list[tuple[float, float]]
-    vision_range: float = 5.0
+    vision_range: float = 3.5
     state: str = "patrol"
     patrol_index: int = 0
     last_seen_position: tuple[float, float] | None = None
@@ -35,9 +35,11 @@ class GridSim:
     tick: int = 0
     agents: list[SquadAgent] = field(default_factory=list)
     guards: list[Guard] = field(default_factory=list)
+    _compromise_counted: set[str] = field(default_factory=set, init=False)
 
     def advance_tick(self, step: float = 0.25) -> None:
         self.tick += 1
+        self._compromise_counted.clear()
         self._update_guard_ai(step)
 
     def _update_guard_ai(self, step: float) -> None:
@@ -52,9 +54,9 @@ class GridSim:
                 guard.last_seen_position = nearest.position
                 guard.chase_target_id = nearest.agent_id
                 dist = _distance(nearest.position, guard.position)
-                if dist <= guard.vision_range * 0.6:
+                if dist <= guard.vision_range * 0.55:
                     guard.state = "chase"
-                    guard.position = _step_toward(guard.position, nearest.position, step * 1.1)
+                    guard.position = _step_toward(guard.position, nearest.position, step * 0.85)
                 else:
                     guard.state = "investigate"
                     guard.position = _step_toward(
@@ -104,11 +106,13 @@ class GridSim:
                         alert = AlertLevel.SUSPICIOUS
 
         if close_contact:
-            agent.compromise_ticks += 1
+            if agent.agent_id not in self._compromise_counted:
+                agent.compromise_ticks += 1
+                self._compromise_counted.add(agent.agent_id)
         else:
             agent.compromise_ticks = 0
 
-        if agent.compromise_ticks >= 2:
+        if agent.compromise_ticks >= 4:
             alert = AlertLevel.COMPROMISED
 
         return PerceptionFrame(
