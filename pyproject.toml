@@ -1,6 +1,6 @@
 [project]
 name = "tactixnet"
-version = "0.1.0"
+version = "0.3.0"
 description = "Decentralized multi-agent coordination engine for real-time tactics games"
 requires-python = ">=3.12"
 
@@ -11,8 +11,9 @@ testpaths = ["tests"]
 pythonpath = ["."]
 markers = [
     "soak: long-running soak tests (deselect with '-m \"not soak\"')",
+    "e2e: end-to-end tests that spawn uvicorn subprocess",
 ]
-addopts = ["-m", "not soak"]
+addopts = ["-m", "not soak and not e2e"]
 
 [tool.ruff]
 line-length = 100

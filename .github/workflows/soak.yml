@@ -1,13 +1,12 @@
-name: CI
+name: Soak
 
 on:
-  pull_request:
-    branches: [develop, main]
-  push:
-    branches: [develop, main]
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
 
 jobs:
-  ci:
+  soak:
     runs-on: ubuntu-latest
     services:
       redis:
@@ -31,15 +30,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Ruff
-        run: ruff check .
-
-      - name: Pytest
+      - name: Soak tests
         env:
           REDIS_URL: redis://localhost:6379/0
-        run: pytest -q
-
-      - name: E2E smoke
-        env:
-          REDIS_URL: redis://localhost:6379/0
-        run: pytest -m e2e -q
+        run: pytest -m soak -q

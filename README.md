@@ -1,6 +1,6 @@
 # TactixNet
 
-> Decentralized multi-agent coordination engine for real-time tactics games — LangGraph-orchestrated squad negotiation over Redis, served through an async FastAPI gateway.
+> Decentralized multi-agent coordination engine for real-time tactics games — LangGraph-orchestrated squad negotiation in-process at the gateway, with Redis for events and session metadata.
 
 [![CI](https://github.com/ankitpatil3003/TactixNet/actions/workflows/ci.yml/badge.svg)](https://github.com/ankitpatil3003/TactixNet/actions/workflows/ci.yml)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
@@ -31,8 +31,10 @@ flowchart LR
     Graph -->|SquadDirective| Gateway
     Gateway -->|WS directives| Client
     Gateway -->|WS broadcast| Viewer[Canvas Viewer /viewer]
-    Gateway <--> Bus[Redis Pub/Sub + Streams event log]
+    Gateway <--> Redis[(Redis: events + session meta)]
 ```
+
+Negotiation runs **in-process** inside the gateway (`LiveNegotiationRunner`). Redis stores the event log and squad metadata for replay and restart recovery — not the per-tick hot path (see v1.4 for distributed engine split).
 
 ### One negotiation cycle
 
@@ -68,11 +70,17 @@ cp .env.example .env          # set GROQ_API_KEY only if you want Tier-2
 # 1. Gateway
 uvicorn gateway.app:app --port 8000
 
-# 2. Demo driver: agents execute awarded roles; guards patrol/investigate/chase
-python -m simulation.run_demo --hz 10 --ticks 300
+# 2. Demo driver (uses scenario tick_rate_hz by default)
+python -m simulation.run_demo --ticks 300
+
+# Ambush scenario (higher pressure, 2 guards)
+python -m simulation.run_demo --scenario simulation/scenarios/ambush.yaml --ticks 300
 
 # Optional: multiple concurrent squads
-python -m simulation.run_demo --hz 10 --ticks 300 --squads 2
+python -m simulation.run_demo --ticks 300 --squads 2
+
+# Docker stack (redis + gateway)
+docker compose up
 ```
 
 The driver prints the viewer URL, e.g.:
@@ -116,9 +124,10 @@ tactixnet/
 ├── gateway/       # FastAPI: WS hot path, REST control plane, live negotiation runner, /viewer
 ├── engine/        # LangGraph StateGraph, Redis bus, checkpointer, CNP award logic
 ├── agents/        # Localized perception model, per-role utility functions, CNP bidder
+├── client/        # Python SDK (SquadClient)
 ├── simulation/    # Headless grid sim, YAML scenarios, demo driver, benchmark CLI
 ├── viewer/        # Canvas visualizer (served by the gateway at /viewer)
-├── tests/         # Unit + integration (39 tests)
+├── tests/         # Unit + integration + e2e (60+ tests)
 └── docs/          # Architecture, protocol, benchmark methodology + results
 ```
 
@@ -128,11 +137,12 @@ tactixnet/
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/health` | GET | Liveness check |
-| `/squads` | POST | Create a squad session — `{"agent_ids": ["a1", ...]}` |
-| `/squads/{id}` | GET | Squad state incl. `last_directive` |
-| `/squads/{id}/doctrine` | POST | Update strategy doctrine (applies weights to live negotiation immediately) |
-| `/squads/{id}/events` | GET | Event log for replay (`?count=500`) |
+| `/health` | GET | Liveness + Redis connectivity (`event_log`, `session_store`) |
+| `/squads` | POST | Create squad — `{"agent_ids": [...], "objective_ref"?, "scenario"?}` |
+| `/squads/{id}` | GET | Squad state incl. `last_directive`, `objective_ref` |
+| `/squads/{id}/scenario` | GET | Scenario metadata attached at squad creation |
+| `/squads/{id}/doctrine` | POST | Update strategy doctrine (applies weights immediately) |
+| `/squads/{id}/events` | GET | Event log for replay (`?count=10000&replay_only=true`) |
 | `/viewer` | GET | Canvas viewer page |
 
 ### WebSocket `/ws/squads/{id}`
@@ -171,6 +181,14 @@ tactixnet/
 
 Connect with `?mode=observer` to receive directives and `world_snapshot` relays without participating (used by the viewer). Malformed frames get a structured `{"type": "error", "code": "MALFORMED_FRAME", ...}` reply.
 
+## v1.3 Highlights
+
+- **Durable sessions:** squad metadata persisted in Redis; lazy rehydration on `GET /squads/{id}` after restart.
+- **Python SDK:** `client.SquadClient` for create, doctrine, scenario, WebSocket frames.
+- **Scenario-driven demos:** `default` + `ambush` YAML scenarios; tick rate from scenario.
+- **Ops:** fixed Docker Compose, E2E smoke in CI, nightly soak workflow.
+- **Viewer:** doctrine panel, dedicated recovery HUD, scenario-aware grid.
+
 ## v1.2 Highlights
 
 - **Doctrine is live:** `POST /doctrine` and async Groq strategy refresh apply weights to the reflex bidder; broadcasts `{"type": "doctrine"}` on update.
@@ -192,7 +210,8 @@ See [CHANGELOG.md](CHANGELOG.md) for full release notes.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `REDIS_URL` | `redis://localhost:6379/0` | Redis connection (event log / bus; optional for local demo) |
+| `REDIS_URL` | `redis://localhost:6379/0` | Redis for event log + session metadata |
+| `USE_REDIS_CHECKPOINT` | — | Set to `1` to persist LangGraph checkpoints in Redis |
 | `GROQ_API_KEY` | — | Enables Tier-2 strategy layer (optional) |
 | `ENGINE_LOG_LEVEL` | `INFO` | Engine runner log level |
 
@@ -201,15 +220,42 @@ Get a Groq key at [console.groq.com](https://console.groq.com/keys).
 ## Development
 
 ```bash
-# Tests + lint
+# Full suite (excludes soak + e2e)
 pytest
+
+# Soak / E2E
+pytest -m soak
+pytest -m e2e
+
+# Lint
 ruff check .
 
-# Full stack in Docker (redis + gateway + engine)
+# Docker stack
 docker compose up
 ```
 
-**Branching:** `main` (release) ← PR ← `develop` (integration) ← PR ← `feature/*`. Every change lands via PR; CI (ruff + pytest with a Redis service) runs on all PRs.
+### Python SDK quickstart
+
+```python
+import asyncio
+from client import SquadClient
+from contracts import PerceptionFrame
+
+async def main() -> None:
+    squad = await SquadClient.create("http://localhost:8000", ["a1", "a2"])
+    await squad.connect()
+    frame = PerceptionFrame(
+        agent_id="a1", tick=1, position=(1.0, 2.0), heading=0.0,
+        visibility_polygon=[(0, 0), (1, 0), (1, 1)],
+    )
+    await squad.send_frame(frame)
+    print(await squad.receive_directive())
+    await squad.aclose()
+
+asyncio.run(main())
+```
+
+**Branching:** `main` (release) ← PR ← `develop` (integration) ← PR ← `feature/*`. Every change lands via PR; CI (ruff + pytest + e2e with Redis) runs on all PRs.
 
 ## Documentation
 

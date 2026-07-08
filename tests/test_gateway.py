@@ -10,6 +10,15 @@ from gateway.app import app
 client = TestClient(app)
 
 
+def test_health_reports_status() -> None:
+    response = client.get("/health")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "ok"
+    assert body["event_log"] in {"connected", "offline"}
+    assert body["session_store"] in {"connected", "offline"}
+
+
 def test_create_and_get_squad() -> None:
     create = client.post("/squads", json={"agent_ids": ["a1", "a2", "a3"]})
     assert create.status_code == 200

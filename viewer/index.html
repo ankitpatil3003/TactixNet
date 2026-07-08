@@ -11,6 +11,8 @@
     #hud b { color: #e2e8f0; }
     #replan { color: #f87171; font-weight: bold; opacity: 0; transition: opacity 0.3s; }
     #replan.flash { opacity: 1; }
+    #doctrine-panel { margin-top: 0.5rem; padding: 0.5rem 0.75rem; background: #1e293b; border: 1px solid #334155; border-radius: 6px; font-size: 0.85rem; color: #94a3b8; max-width: 600px; }
+    #doctrine-panel b { color: #e2e8f0; }
     canvas { background: #1e293b; border: 1px solid #334155; display: block; margin-top: 0.5rem; }
     #legend { margin-top: 0.5rem; font-size: 0.8rem; color: #94a3b8; }
     .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin: 0 4px 0 12px; }
@@ -23,6 +25,7 @@
     <span>Tick: <b id="tick">–</b></span>
     <span>Directive seq: <b id="seq">–</b></span>
     <span>Negotiation latency: <b id="latency">–</b></span>
+    <span>Recovery: <b id="recovery">–</b></span>
     <span>Replans: <b id="replans">0</b></span>
     <span id="replan">⚠ REPLAN</span>
     <span id="replay-controls" style="display:none">
@@ -30,6 +33,7 @@
       <label>Speed <input id="replay-speed" type="range" min="1" max="20" value="5" /></label>
     </span>
   </div>
+  <div id="doctrine-panel">Doctrine: <b id="doctrine-text">–</b></div>
   <canvas id="grid" width="600" height="600"></canvas>
   <div id="legend">
     Agents:
@@ -41,13 +45,16 @@
   </div>
 
   <script>
-    const SCALE = 30;            // 20x20 grid on a 600px canvas
+    const DEFAULT_GRID = 20;
     const canvas = document.getElementById('grid');
     const ctx = canvas.getContext('2d');
 
     const el = (id) => document.getElementById(id);
     const squadId = new URLSearchParams(location.search).get('squad');
     const replayMode = new URLSearchParams(location.search).get('replay') === '1';
+
+    let gridSize = DEFAULT_GRID;
+    let scale = canvas.width / gridSize;
 
     const ALERT_COLORS = {
       CALM: '#4ade80',
@@ -57,16 +64,45 @@
     };
 
     let world = { agents: [], guards: [], tick: 0 };
-    let roles = {};             // agent_id -> role from the latest directive
+    let roles = {};
     let replanCount = 0;
+
+    function setGridSize(size) {
+      gridSize = size || DEFAULT_GRID;
+      scale = canvas.width / gridSize;
+    }
+
+    async function loadScenarioMeta() {
+      if (!squadId) return;
+      try {
+        const response = await fetch(`/squads/${squadId}/scenario`);
+        if (!response.ok) return;
+        const data = await response.json();
+        const scenario = data.scenario || {};
+        setGridSize(scenario.grid_size || DEFAULT_GRID);
+      } catch (_) { /* optional */ }
+    }
+
+    function formatDoctrine(doctrine) {
+      if (!doctrine) return '–';
+      const weights = doctrine.role_weights || {};
+      const parts = Object.entries(weights).map(([k, v]) => `${k}:${v}`);
+      const objective = doctrine.priority_objective || '–';
+      return `${objective} | ${parts.join(', ') || 'default weights'}`;
+    }
+
+    function updateDoctrine(message) {
+      const doctrine = message.doctrine || message;
+      el('doctrine-text').textContent = formatDoctrine(doctrine);
+    }
 
     function drawGrid() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.strokeStyle = '#293548';
-      for (let i = 0; i <= 20; i++) {
+      for (let i = 0; i <= gridSize; i++) {
         ctx.beginPath();
-        ctx.moveTo(i * SCALE, 0); ctx.lineTo(i * SCALE, 600);
-        ctx.moveTo(0, i * SCALE); ctx.lineTo(600, i * SCALE);
+        ctx.moveTo(i * scale, 0); ctx.lineTo(i * scale, canvas.height);
+        ctx.moveTo(0, i * scale); ctx.lineTo(canvas.width, i * scale);
         ctx.stroke();
       }
     }
@@ -74,19 +110,17 @@
     function drawGuards() {
       for (const guard of world.guards) {
         const [x, y] = guard.position;
-        // vision range
         ctx.fillStyle = 'rgba(167, 139, 250, 0.12)';
         ctx.beginPath();
-        ctx.arc(x * SCALE, y * SCALE, (guard.vision_range || 5) * SCALE, 0, Math.PI * 2);
+        ctx.arc(x * scale, y * scale, (guard.vision_range || 5) * scale, 0, Math.PI * 2);
         ctx.fill();
-        // guard body
         ctx.fillStyle = '#a78bfa';
         ctx.beginPath();
-        ctx.arc(x * SCALE, y * SCALE, 9, 0, Math.PI * 2);
+        ctx.arc(x * scale, y * scale, 9, 0, Math.PI * 2);
         ctx.fill();
         ctx.fillStyle = '#e2e8f0';
         ctx.font = '10px sans-serif';
-        ctx.fillText(guard.id, x * SCALE - 8, y * SCALE - 14);
+        ctx.fillText(guard.id, x * scale - 8, y * scale - 14);
       }
     }
 
@@ -95,19 +129,19 @@
         const [x, y] = agent.position;
         ctx.fillStyle = ALERT_COLORS[agent.alert_level] || '#38bdf8';
         ctx.beginPath();
-        ctx.arc(x * SCALE, y * SCALE, 10, 0, Math.PI * 2);
+        ctx.arc(x * scale, y * scale, 10, 0, Math.PI * 2);
         ctx.fill();
         ctx.strokeStyle = '#0f172a';
         ctx.lineWidth = 2;
         ctx.stroke();
         ctx.fillStyle = '#e2e8f0';
         ctx.font = 'bold 10px sans-serif';
-        ctx.fillText(agent.id, x * SCALE - 7, y * SCALE + 3);
+        ctx.fillText(agent.id, x * scale - 7, y * scale + 3);
         const role = roles[agent.id];
         if (role) {
           ctx.fillStyle = '#94a3b8';
           ctx.font = '10px sans-serif';
-          ctx.fillText(role, x * SCALE - 18, y * SCALE + 22);
+          ctx.fillText(role, x * scale - 18, y * scale + 22);
         }
       }
     }
@@ -129,14 +163,15 @@
         world = message;
         el('tick').textContent = message.tick;
         render();
+      } else if (message.type === 'doctrine') {
+        updateDoctrine(message);
       } else if (message.type === 'directive') {
         const directive = message.directive;
         roles = Object.fromEntries(directive.awards.map(a => [a.agent_id, a.role]));
         el('seq').textContent = directive.directive_seq;
         el('latency').textContent = `${message.latency_ms} ms`;
-        if (message.recovery_ms != null) {
-          el('latency').textContent += ` (recovery ${message.recovery_ms} ms)`;
-        }
+        el('recovery').textContent =
+          message.recovery_ms != null ? `${message.recovery_ms} ms` : '–';
         if (message.interrupted) {
           replanCount = message.replan_count;
           el('replans').textContent = replanCount;
@@ -149,6 +184,7 @@
     async function startReplay() {
       el('replay-controls').style.display = 'inline';
       el('status').textContent = 'loading replay…';
+      await loadScenarioMeta();
 
       let events = [];
       let truncated = false;
@@ -187,6 +223,7 @@
         if (!payload) return 0;
         if (entry.type === 'world_snapshot') return payload.tick ?? 0;
         if (entry.type === 'directive') return payload.directive?.tick ?? payload.tick ?? 0;
+        if (entry.type === 'doctrine') updateDoctrine(payload);
         return 0;
       }
 
@@ -198,7 +235,7 @@
         const payload = parsePayload(entry.payload);
         if (!payload) return;
         const message = payload.type ? payload : { ...payload, type: entry.type };
-        if (message.type === 'world_snapshot' || message.type === 'directive') {
+        if (message.type === 'world_snapshot' || message.type === 'directive' || message.type === 'doctrine') {
           handleMessage(message);
         }
       }
@@ -236,6 +273,7 @@
             el('tick').textContent = '–';
             el('seq').textContent = '–';
             el('latency').textContent = '–';
+            el('recovery').textContent = '–';
             replanCount = 0;
             el('replans').textContent = '0';
           }
@@ -255,12 +293,13 @@
         `replay ready: ${events.length} frames, ticks 1–${maxTick}${truncNote} — press Play`;
     }
 
-    function connect() {
+    async function connect() {
       if (!squadId) {
         el('status').textContent = 'add ?squad=<squad-id> to the URL';
         render();
         return;
       }
+      await loadScenarioMeta();
       if (replayMode) {
         startReplay();
         return;
