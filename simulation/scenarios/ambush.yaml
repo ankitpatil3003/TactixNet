@@ -1,0 +1,31 @@
+name: ambush
+tick_rate_hz: 15
+squad_size: 5
+objective: extract-vip
+objective_position: [18, 2]
+grid_size: 20
+guards:
+  - id: g1
+    position: [8, 8]
+    patrol:
+      - [8, 8]
+      - [12, 8]
+      - [12, 12]
+      - [8, 12]
+  - id: g2
+    position: [14, 14]
+    patrol:
+      - [14, 14]
+      - [16, 14]
+      - [16, 16]
+agents:
+  - id: a1
+    position: [2, 18]
+  - id: a2
+    position: [3, 18]
+  - id: a3
+    position: [4, 18]
+  - id: a4
+    position: [5, 18]
+  - id: a5
+    position: [6, 18]

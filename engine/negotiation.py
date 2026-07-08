@@ -23,6 +23,9 @@ class NegotiationResult:
     forfeited_agents: list[str]
 
 
+ROLE_COOLDOWN_TICKS = 3
+
+
 @dataclass
 class ReflexNegotiator:
     """Tier-1 deterministic negotiation engine."""
@@ -30,8 +33,10 @@ class ReflexNegotiator:
     squad_id: str
     agent_ids: list[str]
     bid_timeout_s: float = 0.04
+    role_cooldown_ticks: int = ROLE_COOLDOWN_TICKS
     _directive_seq: int = 0
     _bidders: dict[str, CNPBidder] = field(default_factory=dict, init=False)
+    _cooldown_until: dict[str, int] = field(default_factory=dict, init=False)
 
     def __post_init__(self) -> None:
         self._bidders = {
@@ -48,6 +53,8 @@ class ReflexNegotiator:
         tasks = self._announce_tasks(objective_ref, tick)
         bids, forfeited = await self._collect_bids(frames, tasks)
         awards = self._award_roles(bids, tasks)
+        for award in awards:
+            self._cooldown_until[award.agent_id] = tick + self.role_cooldown_ticks
         self._directive_seq += 1
         directive = SquadDirective(
             squad_id=self.squad_id,
@@ -86,6 +93,10 @@ class ReflexNegotiator:
         async def bid_for_agent(agent_id: str) -> list[Bid]:
             frame = frame_map.get(agent_id)
             if frame is None:
+                return []
+            if frame.cooldown_ticks > 0:
+                return []
+            if self._cooldown_until.get(agent_id, 0) > frame.tick:
                 return []
             bidder = self._bidders[agent_id]
             agent_bids: list[Bid] = []

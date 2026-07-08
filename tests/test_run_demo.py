@@ -1,20 +1,36 @@
 from pathlib import Path
 
+import pytest
+
 from contracts import RoleEnum
 from simulation.movement import step_agent_by_role
-from simulation.run_demo import (
-    DEFAULT_SCENARIO,
-    build_sim,
-    load_scenario,
-    world_snapshot,
-)
+from simulation.run_demo import DEFAULT_SCENARIO, build_sim, world_snapshot
+from simulation.scenario import load_scenario
 
 
 def test_load_default_scenario() -> None:
     scenario = load_scenario(Path(DEFAULT_SCENARIO))
-    assert scenario["name"] == "breach-alpha"
-    assert len(scenario["agents"]) == 5
-    assert scenario["objective_position"] == [16, 16]
+    assert scenario.name == "breach-alpha"
+    assert scenario.squad_size == 5
+    assert len(scenario.raw["agents"]) == 5
+    assert scenario.objective_position == (16.0, 16.0)
+    assert scenario.tick_rate_hz == 20.0
+
+
+def test_load_ambush_scenario() -> None:
+    path = Path(__file__).parent.parent / "simulation" / "scenarios" / "ambush.yaml"
+    scenario = load_scenario(path)
+    assert scenario.name == "ambush"
+    assert scenario.objective == "extract-vip"
+    assert scenario.tick_rate_hz == 15.0
+    assert len(scenario.raw["guards"]) == 2
+
+
+def test_scenario_squad_size_mismatch_raises() -> None:
+    from simulation.scenario import ScenarioConfig
+
+    with pytest.raises(ValueError, match="squad_size"):
+        ScenarioConfig.from_dict({"squad_size": 3, "agents": [{"id": "a1"}]})
 
 
 def test_build_sim_from_scenario() -> None:
@@ -29,7 +45,7 @@ def test_role_based_movement_advances_agent() -> None:
     scenario = load_scenario(Path(DEFAULT_SCENARIO))
     sim = build_sim(scenario)
     start = sim.agents[0].position
-    objective = tuple(scenario["objective_position"])
+    objective = scenario.objective_position
     step_agent_by_role(sim, sim.agents[0], RoleEnum.BREACH, objective, step=0.5)
     assert sim.agents[0].position != start
 
