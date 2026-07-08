@@ -1,6 +1,6 @@
 # Benchmark Results
 
-Generated: 2026-07-07 22:55 UTC
+Generated: 2026-07-07 23:58 UTC
 
 ## Environment
 
@@ -16,28 +16,35 @@ Generated: 2026-07-07 22:55 UTC
 |--------|-------|
 | Samples | 10000 |
 | p50 | 0.14 ms |
-| p95 | 0.15 ms |
-| p99 | 0.16 ms |
-| Mean | 0.14 ms |
-| Max | 0.39 ms |
+| p95 | 0.22 ms |
+| p99 | 0.26 ms |
+| Mean | 0.15 ms |
+| Max | 0.53 ms |
 
 Target: p95 < 150 ms — MET
+
+## Interrupt Recovery (ALERT ingest → replanned directive)
+
+| Metric | Value |
+|--------|-------|
+| recovery p50 | 5.20 ms |
+| recovery p95 | 5.66 ms |
 
 ## Latency Distribution
 
 ```
-   0.14-   0.16 ms | ######################################## 9875
-   0.16-   0.18 ms | # 73
-   0.18-   0.20 ms | # 23
-   0.20-   0.22 ms | # 16
-   0.22-   0.24 ms | # 7
-   0.24-   0.27 ms | # 2
-   0.27-   0.29 ms |  0
-   0.29-   0.31 ms | # 1
-   0.31-   0.33 ms | # 1
-   0.33-   0.35 ms |  0
-   0.35-   0.37 ms |  0
-   0.37-   0.39 ms | # 2
+   0.14-   0.17 ms | ######################################## 9274
+   0.17-   0.20 ms | # 164
+   0.20-   0.24 ms | # 109
+   0.24-   0.27 ms | # 409
+   0.27-   0.30 ms | # 27
+   0.30-   0.33 ms | # 5
+   0.33-   0.37 ms | # 3
+   0.37-   0.40 ms | # 1
+   0.40-   0.43 ms | # 3
+   0.43-   0.47 ms | # 1
+   0.47-   0.50 ms | # 3
+   0.50-   0.53 ms | # 1
 ```
 
 Methodology: see [benchmark-methodology.md](benchmark-methodology.md).
