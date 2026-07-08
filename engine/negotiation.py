@@ -49,12 +49,17 @@ class ReflexNegotiator:
         frames: list[PerceptionFrame],
         objective_ref: str,
         tick: int,
+        *,
+        interrupted: bool = False,
     ) -> NegotiationResult:
+        if interrupted:
+            self._cooldown_until.clear()
         tasks = self._announce_tasks(objective_ref, tick)
         bids, forfeited = await self._collect_bids(frames, tasks)
         awards = self._award_roles(bids, tasks)
-        for award in awards:
-            self._cooldown_until[award.agent_id] = tick + self.role_cooldown_ticks
+        if not interrupted:
+            for award in awards:
+                self._cooldown_until[award.agent_id] = tick + self.role_cooldown_ticks
         self._directive_seq += 1
         directive = SquadDirective(
             squad_id=self.squad_id,
