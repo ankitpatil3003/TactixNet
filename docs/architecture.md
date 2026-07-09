@@ -22,8 +22,18 @@ LangGraph-orchestrated Groq LLM node generates squad doctrine (role weights, pri
 | Engine Worker | `engine/worker.py`, `engine/runner.py` | Distributed negotiation consumer |
 | Orchestrator | `engine/graph.py` | LangGraph negotiation StateGraph |
 | Agents | `agents/` | Perception, utility, CNP bidder |
-| Simulation | `simulation/` | Headless grid sim + benchmark rig |
+| Simulation | `simulation/` | Headless grid sim, scenarios, mission tracker, benchmark rig |
 
-## Interrupt Replanning
+## Living Simulation (v1.9)
+
+The grid harness (`simulation/grid.py`, `simulation/movement.py`) provides a tactics playground aligned with the architecture goals:
+
+- **Bounded world** — `grid_size` from YAML; `simulation/bounds.py` clamps agents and guards every tick
+- **Guard AI** — interpolated patrol, directional vision arc (~120°), investigate/chase state machine
+- **Role movement** — flank arc, distract feint, stealth cover, overwatch hold, breach push — all in-bounds
+- **Perception alignment** — agent `PerceptionFrame` uses the same directional guard detection model as movement
+- **Mission outcomes** — `reach_objective` / `hold_objective` win conditions; lose on all compromised
+
+See [simulation.md](simulation.md) for scenario YAML reference, `world_snapshot` shape, and tick-loop detail.
 
 When any agent broadcasts `ALERT` or `COMPROMISED`, the `compromised_replan` sub-graph activates: boosts distract/stealth weights, revises objective ref, and resumes from the last LangGraph checkpoint.
