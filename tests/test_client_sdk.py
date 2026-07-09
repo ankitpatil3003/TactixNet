@@ -3,7 +3,7 @@ import pytest
 from httpx import ASGITransport
 
 from client import SquadClient
-from contracts import DoctrineUpdate, PerceptionFrame, RoleEnum
+from contracts import DoctrineUpdate, RoleEnum
 from gateway.app import app
 
 
