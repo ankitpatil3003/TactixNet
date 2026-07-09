@@ -3,6 +3,9 @@ tick_rate_hz: 15
 squad_size: 5
 objective: extract-vip
 objective_position: [18, 2]
+objective_radius: 1.5
+win_condition: reach_objective
+lose_on_all_compromised: true
 grid_size: 20
 guards:
   - id: g1

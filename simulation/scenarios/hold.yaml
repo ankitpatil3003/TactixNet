@@ -1,0 +1,32 @@
+name: hold-point
+tick_rate_hz: 12
+squad_size: 4
+objective: secure-beacon
+objective_position: [10, 10]
+objective_radius: 2.0
+win_condition: hold_objective
+hold_ticks: 25
+lose_on_all_compromised: true
+grid_size: 20
+guards:
+  - id: g1
+    position: [6, 14]
+    patrol:
+      - [6, 14]
+      - [10, 14]
+      - [14, 14]
+  - id: g2
+    position: [14, 6]
+    patrol:
+      - [14, 6]
+      - [14, 10]
+      - [10, 6]
+agents:
+  - id: a1
+    position: [2, 2]
+  - id: a2
+    position: [3, 2]
+  - id: a3
+    position: [4, 2]
+  - id: a4
+    position: [5, 2]

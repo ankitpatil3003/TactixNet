@@ -13,6 +13,13 @@
     #replan.flash { opacity: 1; }
     #doctrine-panel { margin-top: 0.5rem; padding: 0.5rem 0.75rem; background: #1e293b; border: 1px solid #334155; border-radius: 6px; font-size: 0.85rem; color: #94a3b8; max-width: 600px; }
     #doctrine-panel b { color: #e2e8f0; }
+    #mission-panel { margin-top: 0.5rem; padding: 0.5rem 0.75rem; background: #1e293b; border: 1px solid #334155; border-radius: 6px; font-size: 0.85rem; color: #94a3b8; max-width: 600px; }
+    #mission-panel b { color: #e2e8f0; }
+    #mission-panel.won { border-color: #4ade80; }
+    #mission-panel.lost { border-color: #f87171; }
+    #mission-overlay { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-size: 2rem; font-weight: bold; opacity: 0; pointer-events: none; transition: opacity 0.3s; }
+    #mission-overlay.show { opacity: 1; }
+    #canvas-wrap { position: relative; display: inline-block; margin-top: 0.5rem; }
     canvas { background: #1e293b; border: 1px solid #334155; display: block; margin-top: 0.5rem; }
     #legend { margin-top: 0.5rem; font-size: 0.8rem; color: #94a3b8; }
     .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin: 0 4px 0 12px; }
@@ -33,8 +40,12 @@
       <label>Speed <input id="replay-speed" type="range" min="1" max="20" value="5" /></label>
     </span>
   </div>
+  <div id="mission-panel">Mission: <b id="mission-objective">–</b> | Status: <b id="mission-status">–</b> | At objective: <b id="mission-at-obj">0</b> | Hold: <b id="mission-hold">–</b></div>
   <div id="doctrine-panel">Doctrine: <b id="doctrine-text">–</b></div>
-  <canvas id="grid" width="600" height="600"></canvas>
+  <div id="canvas-wrap">
+    <canvas id="grid" width="600" height="600"></canvas>
+    <div id="mission-overlay"></div>
+  </div>
   <div id="legend">
     Agents:
     <span class="dot" style="background:#4ade80"></span>calm
@@ -63,9 +74,10 @@
       COMPROMISED: '#f87171',
     };
 
-    let world = { agents: [], guards: [], tick: 0 };
+    let world = { agents: [], guards: [], tick: 0, mission: null };
     let roles = {};
     let replanCount = 0;
+    let scenarioMeta = {};
 
     function setGridSize(size) {
       gridSize = size || DEFAULT_GRID;
@@ -79,8 +91,38 @@
         if (!response.ok) return;
         const data = await response.json();
         const scenario = data.scenario || {};
+        scenarioMeta = scenario;
         setGridSize(scenario.grid_size || DEFAULT_GRID);
+        if (scenario.objective) {
+          el('mission-objective').textContent = scenario.objective;
+        }
       } catch (_) { /* optional */ }
+    }
+
+    function updateMission(mission) {
+      if (!mission) return;
+      const panel = el('mission-panel');
+      const overlay = el('mission-overlay');
+      el('mission-objective').textContent = mission.objective || '–';
+      el('mission-status').textContent = (mission.status || 'active').toUpperCase();
+      el('mission-at-obj').textContent = mission.agents_at_objective ?? 0;
+      const holdText = mission.win_condition === 'hold_objective'
+        ? `${mission.hold_progress || 0}/${mission.hold_ticks || '–'}`
+        : 'n/a';
+      el('mission-hold').textContent = holdText;
+      panel.classList.remove('won', 'lost');
+      overlay.classList.remove('show');
+      if (mission.status === 'won') {
+        panel.classList.add('won');
+        overlay.textContent = 'MISSION WON';
+        overlay.style.color = '#4ade80';
+        overlay.classList.add('show');
+      } else if (mission.status === 'lost') {
+        panel.classList.add('lost');
+        overlay.textContent = 'MISSION LOST';
+        overlay.style.color = '#f87171';
+        overlay.classList.add('show');
+      }
     }
 
     function formatDoctrine(doctrine) {
@@ -105,6 +147,26 @@
         ctx.moveTo(0, i * scale); ctx.lineTo(canvas.width, i * scale);
         ctx.stroke();
       }
+    }
+
+    function drawObjectiveZone() {
+      const mission = world.mission;
+      const pos = mission?.objective_position || scenarioMeta.objective_position;
+      const radius = mission?.objective_radius || scenarioMeta.objective_radius || 1.5;
+      if (!pos) return;
+      const [x, y] = pos;
+      ctx.strokeStyle = 'rgba(74, 222, 128, 0.7)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 4]);
+      ctx.beginPath();
+      ctx.arc(x * scale, y * scale, radius * scale, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(74, 222, 128, 0.15)';
+      ctx.fill();
+      ctx.fillStyle = '#4ade80';
+      ctx.font = '11px sans-serif';
+      ctx.fillText(mission?.objective || scenarioMeta.objective || 'OBJ', x * scale - 12, y * scale - radius * scale - 6);
     }
 
     function drawGuards() {
@@ -148,6 +210,7 @@
 
     function render() {
       drawGrid();
+      drawObjectiveZone();
       drawGuards();
       drawAgents();
     }
@@ -162,6 +225,7 @@
       if (message.type === 'world_snapshot') {
         world = message;
         el('tick').textContent = message.tick;
+        if (message.mission) updateMission(message.mission);
         render();
       } else if (message.type === 'doctrine') {
         updateDoctrine(message);
