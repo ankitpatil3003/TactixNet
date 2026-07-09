@@ -11,22 +11,28 @@ grid_size: 20
 guards:
   - id: g1
     position: [6, 14]
+    vision_range: 3.5
+    vision_angle_deg: 120
+    patrol_speed: 0.2
     patrol:
       - [6, 14]
       - [10, 14]
       - [14, 14]
   - id: g2
     position: [14, 6]
+    vision_range: 3.5
+    vision_angle_deg: 120
+    patrol_speed: 0.2
     patrol:
       - [14, 6]
       - [14, 10]
       - [10, 6]
 agents:
   - id: a1
-    position: [2, 2]
+    position: [3, 3]
   - id: a2
-    position: [3, 2]
-  - id: a3
     position: [4, 2]
+  - id: a3
+    position: [5, 3]
   - id: a4
-    position: [5, 2]
+    position: [6, 2]

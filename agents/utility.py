@@ -66,9 +66,15 @@ def _stealth_cover_utility(perception: AgentPerception) -> float:
 
 
 def _overwatch_utility(perception: AgentPerception) -> float:
-    visibility = len(perception.frame.visibility_polygon)
-    los_bonus = 0.3 if perception.has_line_of_sight_threat() else 0.0
-    return min(1.0, 0.4 + visibility * 0.05 + los_bonus)
+    threats = perception.visible_threats()
+    if perception.is_compromised():
+        return 0.15
+    if not threats:
+        return 0.55
+    nearest = min(threats, key=lambda t: t.threat_level)
+    distance_bonus = max(0.0, 1.0 - nearest.threat_level) * 0.35
+    los_bonus = 0.25 if perception.has_line_of_sight_threat() else 0.0
+    return min(1.0, 0.35 + distance_bonus + los_bonus)
 
 
 def _breach_utility(perception: AgentPerception) -> float:

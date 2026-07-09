@@ -113,7 +113,7 @@ tick=1 seq=1 latency=1.2ms roles={'a1': 'flank', 'a2': 'distract', ...}
 tick=42 seq=42 latency=1.4ms roles={...} [REPLAN]
 ```
 
-**3. Open the viewer URL in a browser.** Agents are color-coded by alert level, labeled with their awarded role, and guards show vision circles. When a guard spots the squad, the REPLAN badge flashes, `recovery_ms` appears in the HUD, and roles reshuffle live.
+**3. Open the viewer URL in a browser.** Agents are color-coded by alert level, labeled with their awarded role, and guards show directional vision arcs with patrol/investigate/chase state badges. When a guard spots the squad, the REPLAN badge flashes, `recovery_ms` appears in the HUD, and roles reshuffle live.
 
 **4. Replay a finished session:** `http://localhost:8000/viewer?squad=<id>&replay=1` (loads events from `GET /squads/{id}/events`).
 
@@ -246,7 +246,7 @@ Connect with `?mode=observer` to receive directives and `world_snapshot` relays 
 
 - **Doctrine is live:** `POST /doctrine` and async Groq strategy refresh apply weights to the reflex bidder; broadcasts `{"type": "doctrine"}` on update.
 - **Event sourcing:** all perception/directive/interrupt events logged (Redis + in-memory fallback); replay in the viewer.
-- **Living world:** guards chase spotted agents; demo agents move by awarded role; `COMPROMISED` after sustained close contact.
+- **Living world:** guards patrol smoothly and chase spotted agents with directional vision; squad agents move by awarded role with tactical behaviors (flank, distract, cover, overwatch, breach); all entities stay in-bounds; `COMPROMISED` after sustained close contact.
 - **recovery_ms:** measured interrupt-to-replan latency on every interrupted cycle.
 - **Concurrency:** per-session locks, multi-squad isolation, opt-in soak test (`pytest -m soak`).
 

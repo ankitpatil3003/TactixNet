@@ -10,6 +10,9 @@ grid_size: 20
 guards:
   - id: g1
     position: [8, 8]
+    vision_range: 3.5
+    vision_angle_deg: 120
+    patrol_speed: 0.2
     patrol:
       - [8, 8]
       - [12, 8]
@@ -17,18 +20,27 @@ guards:
       - [8, 12]
   - id: g2
     position: [14, 14]
+    vision_range: 3.5
+    vision_angle_deg: 120
+    patrol_speed: 0.2
     patrol:
       - [14, 14]
       - [16, 14]
       - [16, 16]
 agents:
   - id: a1
-    position: [2, 18]
+    position: [2, 16]
   - id: a2
-    position: [3, 18]
+    position: [3, 17]
   - id: a3
-    position: [4, 18]
+    position: [4, 16]
   - id: a4
-    position: [5, 18]
+    position: [5, 17]
   - id: a5
-    position: [6, 18]
+    position: [6, 16]
+spawn_roles:
+  a1: breach
+  a2: flank
+  a3: stealth-cover
+  a4: overwatch
+  a5: distract
