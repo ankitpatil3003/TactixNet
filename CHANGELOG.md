@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.5.0
+
+### Added
+- Mission win/lose evaluation: `reach_objective` and `hold_objective` win conditions; lose on all agents compromised.
+- `simulation/mission.py` with `MissionTracker` and per-tick mission state in `world_snapshot`.
+- Scenario fields: `objective_radius`, `win_condition`, `hold_ticks`, `lose_on_all_compromised`.
+- New `hold-point` scenario (`simulation/scenarios/hold.yaml`).
+- Viewer mission HUD: objective zone circle, status panel, WON/LOST overlay.
+
+### Changed
+- Demo driver stops early on mission win/loss and reports outcome.
+- `world_snapshot` includes `mission` block for viewer and replay.
+
 ## v1.4.0
 
 ### Added

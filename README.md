@@ -87,6 +87,9 @@ python -m simulation.run_demo --ticks 300
 # Ambush scenario (higher pressure, 2 guards)
 python -m simulation.run_demo --scenario simulation/scenarios/ambush.yaml --ticks 300
 
+# Hold objective scenario (win by holding zone for N ticks)
+python -m simulation.run_demo --scenario simulation/scenarios/hold.yaml --ticks 300
+
 # Optional: multiple concurrent squads
 python -m simulation.run_demo --ticks 300 --squads 2
 
@@ -198,6 +201,12 @@ tactixnet/
 ```
 
 Connect with `?mode=observer` to receive directives and `world_snapshot` relays without participating (used by the viewer). Malformed frames get a structured `{"type": "error", "code": "MALFORMED_FRAME", ...}` reply.
+
+## v1.5 Highlights
+
+- **Mission outcomes:** win by reaching or holding the objective zone; lose if all agents are compromised.
+- **Objective zones:** scenarios define `objective_radius`; viewer draws the zone and mission HUD.
+- **Hold scenario:** `hold-point` — secure the beacon for 25 ticks under guard pressure.
 
 ## v1.4 Highlights
 

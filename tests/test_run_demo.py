@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from contracts import RoleEnum
+from simulation.mission import MissionTracker
 from simulation.movement import step_agent_by_role
 from simulation.run_demo import DEFAULT_SCENARIO, build_sim, world_snapshot
 from simulation.scenario import load_scenario
@@ -53,8 +54,9 @@ def test_role_based_movement_advances_agent() -> None:
 def test_world_snapshot_shape() -> None:
     scenario = load_scenario(Path(DEFAULT_SCENARIO))
     sim = build_sim(scenario)
+    tracker = MissionTracker()
     sim.advance_tick()
-    snapshot = world_snapshot(sim)
+    snapshot = world_snapshot(sim, scenario, tracker)
 
     assert snapshot["type"] == "world_snapshot"
     assert snapshot["tick"] == 1
@@ -63,3 +65,5 @@ def test_world_snapshot_shape() -> None:
     assert "alert_level" in snapshot["agents"][0]
     assert "vision_range" in snapshot["guards"][0]
     assert "state" in snapshot["guards"][0]
+    assert snapshot["mission"]["status"] == "active"
+    assert snapshot["mission"]["objective"] == "breach-gate"

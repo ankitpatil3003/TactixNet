@@ -16,6 +16,10 @@ class ScenarioConfig:
     squad_size: int
     objective: str
     objective_position: tuple[float, float]
+    objective_radius: float
+    win_condition: str
+    hold_ticks: int
+    lose_on_all_compromised: bool
     raw: dict[str, Any]
 
     @classmethod
@@ -27,12 +31,19 @@ class ScenarioConfig:
                 f"squad_size ({squad_size}) must match agents list length ({len(agents)})"
             )
         obj_pos = data.get("objective_position", [16, 16])
+        win_condition = str(data.get("win_condition", "reach_objective"))
+        if win_condition not in {"reach_objective", "hold_objective"}:
+            raise ValueError(f"unsupported win_condition: {win_condition}")
         return cls(
             name=str(data.get("name", "unnamed")),
             tick_rate_hz=float(data.get("tick_rate_hz", 10.0)),
             squad_size=squad_size,
             objective=str(data.get("objective", data.get("name", "objective"))),
             objective_position=(float(obj_pos[0]), float(obj_pos[1])),
+            objective_radius=float(data.get("objective_radius", 1.5)),
+            win_condition=win_condition,
+            hold_ticks=int(data.get("hold_ticks", 30)),
+            lose_on_all_compromised=bool(data.get("lose_on_all_compromised", True)),
             raw=data,
         )
 
