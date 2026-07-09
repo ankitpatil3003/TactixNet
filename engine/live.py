@@ -86,6 +86,10 @@ class LiveNegotiationRunner:
         after_replan: bool = False,
         on_applied: DoctrineCallback | None = None,
     ) -> None:
+        # Without a strategy backend, fallback doctrine resets all weights to 1.0
+        # and would overwrite manual doctrine from the console.
+        if not self._strategy.available:
+            return
         should_refresh = after_replan or (
             tick - self._last_doctrine_tick >= DOCTRINE_REFRESH_INTERVAL_TICKS
         )
