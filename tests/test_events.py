@@ -66,7 +66,7 @@ def test_events_replay_only_filters_perception() -> None:
 
     assert "perception" in all_types
     assert "perception" not in replay_types
-    assert replay_types <= {"world_snapshot", "directive"}
+    assert replay_types <= {"world_snapshot", "directive", "doctrine"}
 
 
 @pytest.mark.asyncio

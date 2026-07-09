@@ -28,6 +28,13 @@ from gateway.live import CycleResult
 from gateway.persistence import SessionPersistence
 from gateway.relay import DirectiveRelay
 from gateway.sessions import SessionStore, SquadSession
+from gateway.simulation_runner import SimulationRunner
+from simulation.driver import (
+    list_scenario_files,
+    resolve_scenario,
+    scenario_name_from_path,
+    scenario_summary,
+)
 
 event_logger = SquadEventLogger()
 session_persistence = SessionPersistence()
@@ -36,11 +43,14 @@ _checkpoint_bus: MessageBus | None = None
 _hot_path_bus: MessageBus | None = None
 _directive_relay: DirectiveRelay | None = None
 _relay_task: asyncio.Task[None] | None = None
+_simulation_runner: SimulationRunner | None = None
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    global _checkpoint_bus, _hot_path_bus, _directive_relay, _relay_task
+    global _checkpoint_bus, _hot_path_bus, _directive_relay, _relay_task, _simulation_runner
+    gateway_url = os.environ.get("TACTIXNET_GATEWAY_URL", "http://127.0.0.1:8000")
+    _simulation_runner = SimulationRunner(gateway_url)
     await event_logger.connect()
     await session_persistence.connect()
     if os.environ.get("USE_REDIS_CHECKPOINT") == "1":
@@ -94,6 +104,42 @@ class CreateSquadRequest(BaseModel):
     scenario: dict[str, Any] | None = None
 
 
+class CreateSquadFromScenarioRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    scenario: str = Field(min_length=1, description="Scenario file name without .yaml")
+
+
+class StartSimulationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    scenario: str | None = Field(
+        default=None,
+        description="Scenario name; defaults to squad metadata if attached at creation",
+    )
+    ticks: int = Field(default=300, ge=1, le=10_000)
+    hz: float | None = Field(default=None, gt=0, le=60)
+
+
+class SquadSummaryResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    squad_id: str
+    agent_ids: list[str]
+    tick: int
+    objective_ref: str
+    has_doctrine: bool
+    scenario_name: str | None = None
+    simulation: dict[str, Any]
+
+
+class SquadListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    squads: list[SquadSummaryResponse]
+    total: int
+
+
 class SquadStateResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -107,6 +153,7 @@ class SquadStateResponse(BaseModel):
 
 
 VIEWER_HTML = Path(__file__).resolve().parent.parent / "viewer" / "index.html"
+CONSOLE_HTML = Path(__file__).resolve().parent.parent / "viewer" / "console.html"
 
 
 @app.get("/health")
@@ -125,6 +172,11 @@ async def viewer() -> FileResponse:
     return FileResponse(VIEWER_HTML, media_type="text/html")
 
 
+@app.get("/console")
+async def console() -> FileResponse:
+    return FileResponse(CONSOLE_HTML, media_type="text/html")
+
+
 async def _persist_session(session: SquadSession) -> None:
     await session_persistence.save(
         session.squad_id,
@@ -138,6 +190,7 @@ async def _persist_session(session: SquadSession) -> None:
                 session.last_directive.model_dump(mode="json") if session.last_directive else None
             ),
             "scenario": session.scenario,
+            "scenario_file": session.scenario_file,
         },
     )
 
@@ -157,6 +210,7 @@ async def _rehydrate_session(squad_id: str) -> SquadSession | None:
         meta["agent_ids"],
         objective_ref=meta.get("objective_ref", "breach-alpha"),
         scenario=meta.get("scenario"),
+        scenario_file=meta.get("scenario_file"),
         checkpoint_bus=_checkpoint_bus,
         distributed=is_distributed_mode(),
     )
@@ -189,6 +243,76 @@ async def create_squad(body: CreateSquadRequest) -> SquadStateResponse:
         body.agent_ids,
         objective_ref=objective_ref,
         scenario=body.scenario,
+        checkpoint_bus=_checkpoint_bus,
+        distributed=is_distributed_mode(),
+    )
+    await _persist_session(session)
+    await _register_distributed_squad(session)
+    return _session_to_response(session)
+
+
+@app.get("/scenarios")
+async def list_scenarios() -> dict[str, Any]:
+    scenarios: list[dict[str, Any]] = []
+    for path in list_scenario_files():
+        config = resolve_scenario(str(path))
+        scenarios.append(scenario_summary(config, file_name=scenario_name_from_path(path)))
+    return {"scenarios": scenarios, "total": len(scenarios)}
+
+
+@app.get("/squads", response_model=SquadListResponse)
+async def list_squads() -> SquadListResponse:
+    squad_ids: set[str] = set(store.list_ids())
+    if session_persistence.available:
+        squad_ids.update(await session_persistence.list_squad_ids())
+
+    summaries: list[SquadSummaryResponse] = []
+    for squad_id in sorted(squad_ids):
+        session = await _get_or_rehydrate(squad_id)
+        if session is None:
+            continue
+        sim_state = _simulation_runner.get(squad_id) if _simulation_runner else None
+        scenario_name = None
+        if session.scenario is not None:
+            scenario_name = session.scenario_file or str(
+                session.scenario.get("name", session.objective_ref)
+            )
+        summaries.append(
+            SquadSummaryResponse(
+                squad_id=session.squad_id,
+                agent_ids=session.agent_ids,
+                tick=session.tick,
+                objective_ref=session.objective_ref,
+                has_doctrine=session.doctrine is not None,
+                scenario_name=scenario_name,
+                simulation=sim_state.to_dict() if sim_state else {"status": "idle"},
+            )
+        )
+    return SquadListResponse(squads=summaries, total=len(summaries))
+
+
+@app.post("/squads/from-scenario", response_model=SquadStateResponse)
+async def create_squad_from_scenario(
+    body: CreateSquadFromScenarioRequest,
+) -> SquadStateResponse:
+    try:
+        scenario = resolve_scenario(body.scenario)
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=ErrorResponse(
+                code=ErrorCode.VALIDATION_ERROR,
+                message=str(exc),
+            ).model_dump(),
+        ) from exc
+
+    squad_id = str(uuid4())
+    session = store.create(
+        squad_id,
+        [a["id"] for a in scenario.raw["agents"]],
+        objective_ref=scenario.objective,
+        scenario=scenario.raw,
+        scenario_file=body.scenario,
         checkpoint_bus=_checkpoint_bus,
         distributed=is_distributed_mode(),
     )
@@ -264,7 +388,7 @@ async def get_squad_events(
         except json.JSONDecodeError:
             payload = {"raw": payload_raw}
         event_type = entry.get("type")
-        if replay_only and event_type not in {"world_snapshot", "directive"}:
+        if replay_only and event_type not in {"world_snapshot", "directive", "doctrine"}:
             continue
         parsed.append({"id": entry.get("id"), "type": event_type, "payload": payload})
     return {
@@ -297,6 +421,105 @@ async def update_doctrine(squad_id: str, doctrine: DoctrineUpdate) -> SquadState
     await _apply_doctrine(session, doctrine, source="rest")
     await _persist_session(session)
     return _session_to_response(session)
+
+
+@app.post("/squads/{squad_id}/simulate")
+async def start_simulation(squad_id: str, body: StartSimulationRequest) -> dict[str, Any]:
+    session = await _get_or_rehydrate(squad_id)
+    if session is None:
+        raise HTTPException(
+            status_code=404,
+            detail=ErrorResponse(
+                code=ErrorCode.SQUAD_NOT_FOUND,
+                message=f"Squad {squad_id} not found",
+            ).model_dump(),
+        )
+    if _simulation_runner is None:
+        raise HTTPException(
+            status_code=503,
+            detail=ErrorResponse(
+                code=ErrorCode.INTERNAL_ERROR,
+                message="Simulation runner unavailable",
+            ).model_dump(),
+        )
+    if _simulation_runner.is_running(squad_id):
+        raise HTTPException(
+            status_code=409,
+            detail=ErrorResponse(
+                code=ErrorCode.VALIDATION_ERROR,
+                message=f"Simulation already running for squad {squad_id}",
+            ).model_dump(),
+        )
+
+    scenario_name = body.scenario
+    if scenario_name is None:
+        scenario_name = session.scenario_file
+    if scenario_name is None and session.scenario is not None:
+        scenario_name = str(session.scenario.get("name", session.objective_ref))
+    if scenario_name is None:
+        raise HTTPException(
+            status_code=400,
+            detail=ErrorResponse(
+                code=ErrorCode.VALIDATION_ERROR,
+                message="scenario is required when squad has no scenario metadata",
+            ).model_dump(),
+        )
+
+    try:
+        state = await _simulation_runner.start(
+            squad_id,
+            scenario_name=scenario_name,
+            ticks=body.ticks,
+            hz=body.hz,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=ErrorResponse(
+                code=ErrorCode.VALIDATION_ERROR,
+                message=str(exc),
+            ).model_dump(),
+        ) from exc
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=ErrorResponse(
+                code=ErrorCode.VALIDATION_ERROR,
+                message=str(exc),
+            ).model_dump(),
+        ) from exc
+
+    return {"started": True, "simulation": state.to_dict()}
+
+
+@app.get("/squads/{squad_id}/simulation")
+async def get_simulation_status(squad_id: str) -> dict[str, Any]:
+    session = await _get_or_rehydrate(squad_id)
+    if session is None:
+        raise HTTPException(
+            status_code=404,
+            detail=ErrorResponse(
+                code=ErrorCode.SQUAD_NOT_FOUND,
+                message=f"Squad {squad_id} not found",
+            ).model_dump(),
+        )
+    if _simulation_runner is None:
+        return {"squad_id": squad_id, "simulation": {"status": "idle"}}
+    return {"squad_id": squad_id, "simulation": _simulation_runner.get(squad_id).to_dict()}
+
+
+@app.post("/squads/{squad_id}/simulate/cancel")
+async def cancel_simulation(squad_id: str) -> dict[str, Any]:
+    if _simulation_runner is None:
+        raise HTTPException(
+            status_code=503,
+            detail=ErrorResponse(
+                code=ErrorCode.INTERNAL_ERROR,
+                message="Simulation runner unavailable",
+            ).model_dump(),
+        )
+    state = await _simulation_runner.cancel(squad_id)
+    return {"cancelled": state.status == "cancelled", "simulation": state.to_dict()}
 
 
 async def _broadcast(sockets: set[Any], message: dict[str, Any]) -> None:

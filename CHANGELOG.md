@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.7.0
+
+### Added
+- Squad Console at `/console`: create idle squads, apply doctrine, then start simulation on demand.
+- Control-plane endpoints: `GET /squads`, `GET /scenarios`, `POST /squads/from-scenario`, `POST /squads/{id}/simulate`, `GET /squads/{id}/simulation`, `POST /squads/{id}/simulate/cancel`.
+- Gateway-side background `SimulationRunner` streaming ticks via reusable `simulation/driver.py`.
+- `run_demo --create-only` and `--squad-id` to split squad creation from streaming on the CLI.
+- Session metadata persists `scenario_file` so simulations resolve the correct scenario YAML after rehydration.
+
+### Fixed
+- Doctrine events are now included in `replay_only` event queries; the viewer doctrine panel updates during replay.
+- Repaired `scripts/e2e_smoke.py` (broken imports, stale `world_snapshot` signature) and extended it to cover console endpoints.
+
 ## v1.6.0
 
 ### Added
