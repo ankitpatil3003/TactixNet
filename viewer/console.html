@@ -141,6 +141,7 @@
         <input id="priority-objective" type="text" value="breach-gate" />
         <div class="weights" id="weights"></div>
         <button type="button" id="doctrine-btn">Apply doctrine</button>
+        <div id="doctrine-preview" style="font-size:0.8rem;color:var(--muted);margin-top:0.35rem"></div>
 
         <h3 style="font-size:0.95rem;margin:1rem 0 0.5rem">Simulation</h3>
         <label for="ticks">Ticks</label>
@@ -213,7 +214,10 @@
         const val = document.createElement('span');
         val.textContent = range.value;
         val.dataset.role = role;
-        range.oninput = () => { val.textContent = range.value; };
+        range.oninput = () => {
+          val.textContent = range.value;
+          updateDoctrinePreview();
+        };
         container.appendChild(label);
         container.appendChild(range);
         container.appendChild(val);
@@ -223,22 +227,73 @@
     function collectWeights() {
       const weights = {};
       for (const role of ROLES) {
-        const input = el('weights').querySelector(`input[data-role="${role}"]`);
-        weights[role] = Number(input?.value || 1);
+        const input = el('weights').querySelector(`input[data-role="${CSS.escape(role)}"]`);
+        weights[role] = Number(input?.value ?? 1);
       }
       return weights;
     }
 
-    function selectSquad(id) {
+    function formatWeightPreview(weights) {
+      return ROLES.map((role) => `${role}:${weights[role] ?? 1}`).join(', ');
+    }
+
+    function updateDoctrinePreview(weights = collectWeights()) {
+      el('doctrine-preview').textContent = `Current sliders: ${formatWeightPreview(weights)}`;
+    }
+
+    function highlightSquadRow(id) {
+      document.querySelectorAll('#squad-rows tr[data-id]').forEach((row) => {
+        row.classList.toggle('selected', row.dataset.id === id);
+      });
+    }
+
+    async function loadSquadDetails(id) {
       selectedId = id;
       el('selected-label').textContent = id;
       el('selected-panel').style.display = 'block';
       el('link-live').href = `/viewer?squad=${id}`;
       el('link-replay').href = `/viewer?squad=${id}&replay=1`;
-      document.querySelectorAll('#squad-rows tr[data-id]').forEach((row) => {
-        row.classList.toggle('selected', row.dataset.id === id);
+      highlightSquadRow(id);
+
+      try {
+        const state = await api(`/squads/${id}`);
+        if (state.doctrine?.role_weights) {
+          renderWeightSliders(state.doctrine.role_weights);
+          el('priority-objective').value =
+            state.doctrine.priority_objective || state.objective_ref || 'breach-gate';
+          updateDoctrinePreview(state.doctrine.role_weights);
+        } else {
+          renderWeightSliders();
+          el('priority-objective').value = state.objective_ref || 'breach-gate';
+          updateDoctrinePreview();
+        }
+      } catch (err) {
+        toast(err.message);
+      }
+      await refreshSimulationStatus();
+    }
+
+    function selectSquad(id) {
+      if (selectedId === id && el('selected-panel').style.display !== 'none') {
+        highlightSquadRow(id);
+        return;
+      }
+      loadSquadDetails(id);
+    }
+
+    async function applyDoctrineFromSliders() {
+      if (!selectedId) return null;
+      const body = {
+        squad_id: selectedId,
+        role_weights: collectWeights(),
+        priority_objective: el('priority-objective').value || 'breach-gate',
+      };
+      const state = await api(`/squads/${selectedId}/doctrine`, {
+        method: 'POST',
+        body: JSON.stringify(body),
       });
-      refreshSimulationStatus();
+      updateDoctrinePreview(body.role_weights);
+      return state;
     }
 
     async function loadScenarios() {
@@ -274,7 +329,7 @@
         row.onclick = () => selectSquad(row.dataset.id);
       });
       if (selectedId && squads.some((s) => s.squad_id === selectedId)) {
-        selectSquad(selectedId);
+        highlightSquadRow(selectedId);
       }
     }
 
@@ -319,8 +374,7 @@
         });
         toast(`Created ${shortId(squad.squad_id)}`);
         await loadSquads();
-        selectSquad(squad.squad_id);
-        el('priority-objective').value = squad.objective_ref || 'breach-gate';
+        await loadSquadDetails(squad.squad_id);
       } catch (err) {
         toast(err.message);
       }
@@ -328,13 +382,8 @@
 
     el('doctrine-btn').onclick = async () => {
       if (!selectedId) return;
-      const body = {
-        squad_id: selectedId,
-        role_weights: collectWeights(),
-        priority_objective: el('priority-objective').value || 'breach-gate',
-      };
       try {
-        await api(`/squads/${selectedId}/doctrine`, { method: 'POST', body: JSON.stringify(body) });
+        await applyDoctrineFromSliders();
         toast('Doctrine applied');
         await loadSquads();
       } catch (err) {
@@ -349,8 +398,9 @@
       const body = { ticks };
       if (hzRaw) body.hz = Number(hzRaw);
       try {
+        await applyDoctrineFromSliders();
         await api(`/squads/${selectedId}/simulate`, { method: 'POST', body: JSON.stringify(body) });
-        toast('Simulation started — open Live viewer');
+        toast('Doctrine applied — simulation started');
         window.open(`/viewer?squad=${selectedId}`, '_blank');
         await loadSquads();
         await refreshSimulationStatus();
@@ -372,6 +422,7 @@
     };
 
     renderWeightSliders();
+    updateDoctrinePreview();
     (async () => {
       try {
         await loadScenarios();
