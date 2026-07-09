@@ -117,6 +117,14 @@ tick=42 seq=42 latency=1.4ms roles={...} [REPLAN]
 
 **4. Replay a finished session:** `http://localhost:8000/viewer?squad=<id>&replay=1` (loads events from `GET /squads/{id}/events`).
 
+**Console (create → doctrine → simulate):** `http://localhost:8000/console` — create an idle squad, apply doctrine, then click **Start simulation** and open the live viewer.
+
+**CLI create without auto-start:**
+```bash
+python -m simulation.run_demo --create-only --scenario simulation/scenarios/default.yaml
+python -m simulation.run_demo --squad-id <id> --ticks 300
+```
+
 **5. Apply doctrine manually (Tier-2 weights without waiting for Groq):**
 ```bash
 curl -X POST http://localhost:8000/squads/<id>/doctrine \

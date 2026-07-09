@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TactixNet Console</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #1e293b;
+      --border: #334155;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --ok: #4ade80;
+      --warn: #fbbf24;
+      --err: #f87171;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 1rem 1.25rem 2rem;
+      max-width: 1100px;
+    }
+    h1 { margin: 0 0 0.25rem; font-size: 1.4rem; }
+    .sub { color: var(--muted); margin-bottom: 1.25rem; font-size: 0.9rem; }
+    .sub a { color: var(--accent); }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+    }
+    .card h2 { margin: 0 0 0.75rem; font-size: 1rem; }
+    label { display: block; font-size: 0.85rem; color: var(--muted); margin: 0.5rem 0 0.25rem; }
+    input[type=number], input[type=text] { width: 12rem; }
+    input, select, button {
+      font: inherit;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: #0f172a;
+      color: var(--text);
+      padding: 0.45rem 0.6rem;
+    }
+    button {
+      cursor: pointer;
+      background: #1d4ed8;
+      border-color: #2563eb;
+      margin-top: 0.75rem;
+      margin-right: 0.5rem;
+    }
+    button.secondary { background: #334155; border-color: #475569; }
+    button.danger { background: #991b1b; border-color: #b91c1c; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    th, td { text-align: left; padding: 0.45rem 0.35rem; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 600; }
+    tr.selected { background: #172554; }
+    tr[data-id] { cursor: pointer; }
+    tr[data-id]:hover { background: #1e3a5f; }
+    .pill {
+      display: inline-block;
+      padding: 0.1rem 0.45rem;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      border: 1px solid var(--border);
+    }
+    .pill.running { color: var(--warn); border-color: var(--warn); }
+    .pill.finished { color: var(--ok); border-color: var(--ok); }
+    .pill.idle { color: var(--muted); }
+    .pill.error { color: var(--err); border-color: var(--err); }
+    .weights { display: grid; grid-template-columns: 8rem 1fr 3rem; gap: 0.45rem 0.75rem; align-items: center; max-width: 480px; margin-top: 0.5rem; }
+    .weights input[type=range] { width: 100%; margin: 0; }
+    .weights span { text-align: right; color: var(--text); }
+    #toast {
+      position: fixed; bottom: 1rem; right: 1rem;
+      background: var(--panel); border: 1px solid var(--border);
+      padding: 0.6rem 0.9rem; border-radius: 8px; opacity: 0;
+      transition: opacity 0.2s; pointer-events: none;
+    }
+    #toast.show { opacity: 1; }
+    .links a { margin-right: 0.75rem; color: var(--accent); font-size: 0.85rem; }
+    #status-bar { font-size: 0.85rem; color: var(--muted); margin-bottom: 0.75rem; }
+  </style>
+</head>
+<body>
+  <h1>TactixNet Console</h1>
+  <p class="sub">
+    Create squads, apply doctrine, then start simulation when ready.
+    <a href="/viewer">Viewer</a>
+  </p>
+  <div id="status-bar">Loading…</div>
+
+  <div class="grid">
+    <section class="card">
+      <h2>Squads</h2>
+      <button type="button" id="refresh-btn" class="secondary">Refresh</button>
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Agents</th>
+            <th>Tick</th>
+            <th>Doctrine</th>
+            <th>Sim</th>
+          </tr>
+        </thead>
+        <tbody id="squad-rows">
+          <tr><td colspan="5">No squads yet</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="card">
+      <h2>Create squad</h2>
+      <label for="scenario-select">Scenario</label>
+      <select id="scenario-select"></select>
+      <button type="button" id="create-btn">Create squad (idle)</button>
+      <p style="font-size:0.8rem;color:var(--muted);margin-top:0.5rem">
+        Squad is created but simulation does not start until you click Start below.
+      </p>
+    </section>
+
+    <section class="card" style="grid-column: 1 / -1">
+      <h2>Selected squad</h2>
+      <div id="selected-label" style="color:var(--muted);font-size:0.9rem">Click a squad in the table</div>
+
+      <div id="selected-panel" style="display:none">
+        <div class="links" style="margin:0.5rem 0 1rem">
+          <a id="link-live" href="#" target="_blank">Live viewer</a>
+          <a id="link-replay" href="#" target="_blank">Replay</a>
+        </div>
+
+        <h3 style="font-size:0.95rem;margin:0 0 0.5rem">Doctrine (apply before Start)</h3>
+        <label for="priority-objective">Priority objective</label>
+        <input id="priority-objective" type="text" value="breach-gate" />
+        <div class="weights" id="weights"></div>
+        <button type="button" id="doctrine-btn">Apply doctrine</button>
+
+        <h3 style="font-size:0.95rem;margin:1rem 0 0.5rem">Simulation</h3>
+        <label for="ticks">Ticks</label>
+        <input id="ticks" type="number" min="1" max="10000" value="300" />
+        <label for="hz">Tick rate (Hz, optional)</label>
+        <input id="hz" type="number" min="1" max="60" placeholder="scenario default" />
+        <button type="button" id="start-btn">Start simulation</button>
+        <button type="button" id="cancel-btn" class="danger">Cancel</button>
+        <div id="sim-status" style="margin-top:0.75rem;font-size:0.85rem;color:var(--muted)"></div>
+      </div>
+    </section>
+  </div>
+
+  <div id="toast"></div>
+
+  <script>
+    const ROLES = ['distract', 'flank', 'stealth-cover', 'overwatch', 'breach'];
+    const DEFAULT_WEIGHTS = { distract: 1, flank: 1, 'stealth-cover': 1, overwatch: 1, breach: 1 };
+
+    let selectedId = null;
+    let pollTimer = null;
+
+    const el = (id) => document.getElementById(id);
+
+    function toast(msg) {
+      const t = el('toast');
+      t.textContent = msg;
+      t.classList.add('show');
+      setTimeout(() => t.classList.remove('show'), 2800);
+    }
+
+    async function api(path, options = {}) {
+      const res = await fetch(path, {
+        headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+        ...options,
+      });
+      const text = await res.text();
+      let body = null;
+      try { body = text ? JSON.parse(text) : null; } catch { body = { raw: text }; }
+      if (!res.ok) {
+        const msg = body?.detail?.message || body?.detail || res.statusText;
+        throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
+      }
+      return body;
+    }
+
+    function shortId(id) {
+      return id ? `${id.slice(0, 8)}…` : '–';
+    }
+
+    function simPill(sim) {
+      const s = sim?.status || 'idle';
+      return `<span class="pill ${s}">${s}</span>`;
+    }
+
+    function renderWeightSliders(weights = DEFAULT_WEIGHTS) {
+      const container = el('weights');
+      container.innerHTML = '';
+      for (const role of ROLES) {
+        const label = document.createElement('label');
+        label.textContent = role;
+        label.style.margin = '0';
+        const range = document.createElement('input');
+        range.type = 'range';
+        range.min = '0';
+        range.max = '5';
+        range.step = '0.1';
+        range.value = String(weights[role] ?? 1);
+        range.dataset.role = role;
+        const val = document.createElement('span');
+        val.textContent = range.value;
+        val.dataset.role = role;
+        range.oninput = () => { val.textContent = range.value; };
+        container.appendChild(label);
+        container.appendChild(range);
+        container.appendChild(val);
+      }
+    }
+
+    function collectWeights() {
+      const weights = {};
+      for (const role of ROLES) {
+        const input = el('weights').querySelector(`input[data-role="${role}"]`);
+        weights[role] = Number(input?.value || 1);
+      }
+      return weights;
+    }
+
+    function selectSquad(id) {
+      selectedId = id;
+      el('selected-label').textContent = id;
+      el('selected-panel').style.display = 'block';
+      el('link-live').href = `/viewer?squad=${id}`;
+      el('link-replay').href = `/viewer?squad=${id}&replay=1`;
+      document.querySelectorAll('#squad-rows tr[data-id]').forEach((row) => {
+        row.classList.toggle('selected', row.dataset.id === id);
+      });
+      refreshSimulationStatus();
+    }
+
+    async function loadScenarios() {
+      const data = await api('/scenarios');
+      const select = el('scenario-select');
+      select.innerHTML = '';
+      for (const s of data.scenarios || []) {
+        const opt = document.createElement('option');
+        opt.value = s.name;
+        opt.textContent = `${s.name} (${s.display_name}, ${s.squad_size} agents)`;
+        select.appendChild(opt);
+      }
+    }
+
+    async function loadSquads() {
+      const data = await api('/squads');
+      const rows = el('squad-rows');
+      const squads = data.squads || [];
+      if (squads.length === 0) {
+        rows.innerHTML = '<tr><td colspan="5">No squads — create one →</td></tr>';
+        return;
+      }
+      rows.innerHTML = squads.map((s) => `
+        <tr data-id="${s.squad_id}">
+          <td title="${s.squad_id}">${shortId(s.squad_id)}</td>
+          <td>${s.agent_ids.length}</td>
+          <td>${s.tick}</td>
+          <td>${s.has_doctrine ? 'yes' : '–'}</td>
+          <td>${simPill(s.simulation)}</td>
+        </tr>
+      `).join('');
+      rows.querySelectorAll('tr[data-id]').forEach((row) => {
+        row.onclick = () => selectSquad(row.dataset.id);
+      });
+      if (selectedId && squads.some((s) => s.squad_id === selectedId)) {
+        selectSquad(selectedId);
+      }
+    }
+
+    async function refreshSimulationStatus() {
+      if (!selectedId) return;
+      try {
+        const data = await api(`/squads/${selectedId}/simulation`);
+        const sim = data.simulation || {};
+        el('sim-status').textContent =
+          `Status: ${sim.status} | ticks ${sim.ticks_run || 0}/${sim.ticks_requested || '–'} | mission: ${sim.mission || '–'}`;
+        const running = sim.status === 'running';
+        el('start-btn').disabled = running;
+        el('cancel-btn').disabled = !running;
+        if (running && !pollTimer) {
+          pollTimer = setInterval(async () => {
+            await loadSquads();
+            await refreshSimulationStatus();
+            const st = (await api(`/squads/${selectedId}/simulation`)).simulation;
+            if (st.status !== 'running') {
+              clearInterval(pollTimer);
+              pollTimer = null;
+            }
+          }, 1000);
+        }
+      } catch (err) {
+        el('sim-status').textContent = err.message;
+      }
+    }
+
+    el('refresh-btn').onclick = async () => {
+      el('status-bar').textContent = 'Refreshing…';
+      await loadSquads();
+      el('status-bar').textContent = 'Ready';
+    };
+
+    el('create-btn').onclick = async () => {
+      const scenario = el('scenario-select').value;
+      try {
+        const squad = await api('/squads/from-scenario', {
+          method: 'POST',
+          body: JSON.stringify({ scenario }),
+        });
+        toast(`Created ${shortId(squad.squad_id)}`);
+        await loadSquads();
+        selectSquad(squad.squad_id);
+        el('priority-objective').value = squad.objective_ref || 'breach-gate';
+      } catch (err) {
+        toast(err.message);
+      }
+    };
+
+    el('doctrine-btn').onclick = async () => {
+      if (!selectedId) return;
+      const body = {
+        squad_id: selectedId,
+        role_weights: collectWeights(),
+        priority_objective: el('priority-objective').value || 'breach-gate',
+      };
+      try {
+        await api(`/squads/${selectedId}/doctrine`, { method: 'POST', body: JSON.stringify(body) });
+        toast('Doctrine applied');
+        await loadSquads();
+      } catch (err) {
+        toast(err.message);
+      }
+    };
+
+    el('start-btn').onclick = async () => {
+      if (!selectedId) return;
+      const ticks = Number(el('ticks').value) || 300;
+      const hzRaw = el('hz').value;
+      const body = { ticks };
+      if (hzRaw) body.hz = Number(hzRaw);
+      try {
+        await api(`/squads/${selectedId}/simulate`, { method: 'POST', body: JSON.stringify(body) });
+        toast('Simulation started — open Live viewer');
+        window.open(`/viewer?squad=${selectedId}`, '_blank');
+        await loadSquads();
+        await refreshSimulationStatus();
+      } catch (err) {
+        toast(err.message);
+      }
+    };
+
+    el('cancel-btn').onclick = async () => {
+      if (!selectedId) return;
+      try {
+        await api(`/squads/${selectedId}/simulate/cancel`, { method: 'POST' });
+        toast('Cancel requested');
+        await loadSquads();
+        await refreshSimulationStatus();
+      } catch (err) {
+        toast(err.message);
+      }
+    };
+
+    renderWeightSliders();
+    (async () => {
+      try {
+        await loadScenarios();
+        await loadSquads();
+        el('status-bar').textContent = 'Ready — create a squad, apply doctrine, then Start';
+      } catch (err) {
+        el('status-bar').textContent = `Error: ${err.message}`;
+      }
+    })();
+  </script>
+</body>
+</html>
