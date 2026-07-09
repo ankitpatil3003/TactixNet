@@ -18,7 +18,8 @@ LangGraph-orchestrated Groq LLM node generates squad doctrine (role weights, pri
 |-----------|------|------|
 | Contracts | `contracts/` | Pydantic v2 shared schemas |
 | Gateway | `gateway/` | FastAPI WebSocket hot path + REST control plane |
-| Message Bus | `engine/bus.py` | Redis pub/sub + Streams event log |
+| Message Bus | `engine/bus.py` | Redis pub/sub hot path + Streams event log |
+| Engine Worker | `engine/worker.py`, `engine/runner.py` | Distributed negotiation consumer |
 | Orchestrator | `engine/graph.py` | LangGraph negotiation StateGraph |
 | Agents | `agents/` | Perception, utility, CNP bidder |
 | Simulation | `simulation/` | Headless grid sim + benchmark rig |

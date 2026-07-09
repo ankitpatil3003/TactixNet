@@ -16,6 +16,14 @@ def squad_channel(squad_id: str, channel: str) -> str:
     return f"squad:{squad_id}:{channel}"
 
 
+def parse_squad_channel(channel: str) -> tuple[str, str] | None:
+    """Parse squad:{squad_id}:{suffix} into (squad_id, suffix)."""
+    parts = channel.split(":")
+    if len(parts) < 3 or parts[0] != "squad":
+        return None
+    return parts[1], ":".join(parts[2:])
+
+
 class MessageBus:
     """Redis-backed message bus for squad coordination."""
 
@@ -58,12 +66,36 @@ class MessageBus:
         await self.client.publish(channel, payload)
         await self._log_event(squad_id, "directive", payload)
 
+    async def publish_directive_envelope(self, squad_id: str, message: dict[str, Any]) -> None:
+        channel = squad_channel(squad_id, "directives")
+        payload = json.dumps(message)
+        await self.client.publish(channel, payload)
+        await self._log_event(squad_id, "directive", payload)
+
+    async def publish_control(self, squad_id: str, message: dict[str, Any]) -> None:
+        channel = squad_channel(squad_id, "control")
+        payload = json.dumps(message)
+        await self.client.publish(channel, payload)
+
+    async def publish_doctrine_update(self, squad_id: str, message: dict[str, Any]) -> None:
+        channel = squad_channel(squad_id, "doctrine")
+        payload = json.dumps(message)
+        await self.client.publish(channel, payload)
+        await self._log_event(squad_id, "doctrine", payload)
+
     async def subscribe(self, squad_id: str, *channels: str) -> redis.client.PubSub:
         if self._pubsub is not None:
             await self._pubsub.aclose()
         self._pubsub = self.client.pubsub()
         names = [squad_channel(squad_id, ch) for ch in channels]
         await self._pubsub.subscribe(*names)
+        return self._pubsub
+
+    async def psubscribe(self, *patterns: str) -> redis.client.PubSub:
+        if self._pubsub is not None:
+            await self._pubsub.aclose()
+        self._pubsub = self.client.pubsub()
+        await self._pubsub.psubscribe(*patterns)
         return self._pubsub
 
     async def listen(self, pubsub: redis.client.PubSub) -> AsyncIterator[tuple[str, str]]:

@@ -34,7 +34,18 @@ flowchart LR
     Gateway <--> Redis[(Redis: events + session meta)]
 ```
 
-Negotiation runs **in-process** inside the gateway (`LiveNegotiationRunner`). Redis stores the event log and squad metadata for replay and restart recovery — not the per-tick hot path (see v1.4 for distributed engine split).
+Negotiation runs **in-process** inside the gateway by default (`ENGINE_MODE=inprocess`). Set `ENGINE_MODE=distributed` with the `engine` worker service to route perceptions and directives through Redis pub/sub — matching the diagram below for multi-process deployments.
+
+```mermaid
+flowchart LR
+    Client[Game Client / Sim Harness] -->|WS perception frames| Gateway[FastAPI Gateway]
+    Gateway -->|Redis pub/sub| Engine[Engine Worker]
+    Engine -->|LangGraph + CNP| Engine
+    Engine -->|Redis directives| Gateway
+    Gateway -->|WS directives| Client
+    Gateway -->|WS broadcast| Viewer[Canvas Viewer /viewer]
+    Gateway <--> Redis[(Redis: events + session meta + hot path)]
+```
 
 ### One negotiation cycle
 
@@ -79,8 +90,15 @@ python -m simulation.run_demo --scenario simulation/scenarios/ambush.yaml --tick
 # Optional: multiple concurrent squads
 python -m simulation.run_demo --ticks 300 --squads 2
 
-# Docker stack (redis + gateway)
+# Docker stack (redis + engine worker + gateway, distributed mode)
 docker compose up
+```
+
+Distributed mode (`ENGINE_MODE=distributed`) splits negotiation into a separate engine process. Local dev defaults to in-process — no engine container required:
+
+```bash
+# In-process (default) — single gateway process
+uvicorn gateway.app:app --port 8000
 ```
 
 The driver prints the viewer URL, e.g.:
@@ -181,6 +199,13 @@ tactixnet/
 
 Connect with `?mode=observer` to receive directives and `world_snapshot` relays without participating (used by the viewer). Malformed frames get a structured `{"type": "error", "code": "MALFORMED_FRAME", ...}` reply.
 
+## v1.4 Highlights
+
+- **Distributed engine:** `ENGINE_MODE=distributed` routes perceptions and directives through Redis pub/sub; `python -m engine.runner` worker process.
+- **Docker Compose:** `redis` + `engine` + `gateway` stack for multi-process deployment.
+- **Directive relay:** gateway subscribes to engine-published directives and doctrine updates.
+- **Health:** `/health` reports `engine_mode` and `hot_path_bus` status.
+
 ## v1.3 Highlights
 
 - **Durable sessions:** squad metadata persisted in Redis; lazy rehydration on `GET /squads/{id}` after restart.
@@ -210,6 +235,7 @@ See [CHANGELOG.md](CHANGELOG.md) for full release notes.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `ENGINE_MODE` | `inprocess` | `inprocess` (default) or `distributed` (Redis hot path + engine worker) |
 | `REDIS_URL` | `redis://localhost:6379/0` | Redis for event log + session metadata |
 | `USE_REDIS_CHECKPOINT` | — | Set to `1` to persist LangGraph checkpoints in Redis |
 | `GROQ_API_KEY` | — | Enables Tier-2 strategy layer (optional) |
