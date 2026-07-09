@@ -116,6 +116,19 @@ class SquadClient:
         response.raise_for_status()
         return response.json()
 
+    async def get_events(
+        self, *, count: int = 100, replay_only: bool = False
+    ) -> dict[str, Any]:
+        await self._ensure_http()
+        if self.squad_id is None:
+            raise RuntimeError("squad_id is required")
+        params: dict[str, Any] = {"count": count}
+        if replay_only:
+            params["replay_only"] = True
+        response = await self._http.get(f"/squads/{self.squad_id}/events", params=params)
+        response.raise_for_status()
+        return response.json()
+
     async def aclose(self) -> None:
         if self._ws is not None:
             await self._ws.close()

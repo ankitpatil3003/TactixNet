@@ -1,0 +1,12 @@
+{
+  "name": "tactixnet-node-quickstart",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node quickstart.mjs"
+  },
+  "dependencies": {
+    "@tactixnet/client": "file:../../sdk/typescript",
+    "ws": "^8.18.0"
+  }
+}

@@ -35,6 +35,17 @@ async def test_squad_client_apply_doctrine() -> None:
 
 
 @pytest.mark.asyncio
+async def test_squad_client_get_events() -> None:
+    transport = ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as http:
+        squad = await SquadClient.create("http://testserver", ["a1"], http=http)
+        events = await squad.get_events(count=10)
+        assert events["squad_id"] == squad.squad_id
+        assert "events" in events
+        await squad.aclose()
+
+
+@pytest.mark.asyncio
 async def test_squad_client_with_scenario_metadata() -> None:
     transport = ASGITransport(app=app)
     scenario = {"name": "test", "objective": "obj-a", "tick_rate_hz": 12}
