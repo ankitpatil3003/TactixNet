@@ -146,6 +146,9 @@ tactixnet/
 ├── engine/        # LangGraph StateGraph, Redis bus, checkpointer, CNP award logic
 ├── agents/        # Localized perception model, per-role utility functions, CNP bidder
 ├── client/        # Python SDK (SquadClient)
+├── sdk/typescript/# TypeScript/Node SDK (@tactixnet/client)
+├── examples/      # Node, Unity, Godot integration guides
+├── openapi/       # Exported OpenAPI schema (openapi.json)
 ├── simulation/    # Headless grid sim, YAML scenarios, demo driver, benchmark CLI
 ├── viewer/        # Canvas visualizer (served by the gateway at /viewer)
 ├── tests/         # Unit + integration + e2e (60+ tests)
@@ -164,6 +167,8 @@ tactixnet/
 | `/squads/{id}/scenario` | GET | Scenario metadata attached at squad creation |
 | `/squads/{id}/doctrine` | POST | Update strategy doctrine (applies weights immediately) |
 | `/squads/{id}/events` | GET | Event log for replay (`?count=10000&replay_only=true`) |
+| `/openapi.json` | GET | OpenAPI 3 schema |
+| `/docs` | GET | Swagger UI |
 | `/viewer` | GET | Canvas viewer page |
 
 ### WebSocket `/ws/squads/{id}`
@@ -201,6 +206,12 @@ tactixnet/
 ```
 
 Connect with `?mode=observer` to receive directives and `world_snapshot` relays without participating (used by the viewer). Malformed frames get a structured `{"type": "error", "code": "MALFORMED_FRAME", ...}` reply.
+
+## v1.6 Highlights
+
+- **TypeScript SDK:** `@tactixnet/client` for Node 18+ (create, connect, frames, directives, events).
+- **OpenAPI:** export with `python scripts/export_openapi.py`; live at `/openapi.json` and `/docs`.
+- **Integration examples:** Node quickstart, Unity and Godot wiring guides.
 
 ## v1.5 Highlights
 
@@ -288,6 +299,22 @@ async def main() -> None:
     await squad.aclose()
 
 asyncio.run(main())
+```
+
+### TypeScript / Node SDK
+
+```bash
+cd sdk/typescript && npm install && npm run build
+cd ../../examples/node && npm install && npm start
+```
+
+See `sdk/typescript/README.md` and `examples/unity/README.md` / `examples/godot/README.md` for engine integration.
+
+### OpenAPI
+
+```bash
+python scripts/export_openapi.py   # writes openapi/openapi.json
+# Or browse http://localhost:8000/docs when the gateway is running
 ```
 
 **Branching:** `main` (release) ← PR ← `develop` (integration) ← PR ← `feature/*`. Every change lands via PR; CI (ruff + pytest + e2e with Redis) runs on all PRs.

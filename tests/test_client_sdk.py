@@ -3,7 +3,7 @@ import pytest
 from httpx import ASGITransport
 
 from client import SquadClient
-from contracts import DoctrineUpdate, RoleEnum
+from contracts import DoctrineUpdate, PerceptionFrame, RoleEnum
 from gateway.app import app
 
 
@@ -31,6 +31,17 @@ async def test_squad_client_apply_doctrine() -> None:
         )
         state = await squad.apply_doctrine(doctrine)
         assert state["doctrine"]["priority_objective"] == "breach-gate"
+        await squad.aclose()
+
+
+@pytest.mark.asyncio
+async def test_squad_client_get_events() -> None:
+    transport = ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as http:
+        squad = await SquadClient.create("http://testserver", ["a1"], http=http)
+        events = await squad.get_events(count=10)
+        assert events["squad_id"] == squad.squad_id
+        assert "events" in events
         await squad.aclose()
 
 

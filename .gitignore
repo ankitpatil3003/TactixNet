@@ -214,5 +214,9 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
+# Node / TypeScript SDK
+node_modules/
+sdk/typescript/dist/
+
 # Streamlit
 .streamlit/secrets.toml
