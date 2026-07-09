@@ -40,6 +40,8 @@ def test_build_sim_from_scenario() -> None:
     sim = build_sim(scenario)
     assert len(sim.agents) == 5
     assert len(sim.guards) == 1
+    assert sim.width == 20
+    assert sim.height == 20
     assert sim.guards[0].patrol_route[0] == (10.0, 10.0)
 
 

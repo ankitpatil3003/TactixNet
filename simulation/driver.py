@@ -18,6 +18,7 @@ SCENARIOS_DIR = Path(__file__).parent / "scenarios"
 
 def build_sim(scenario: ScenarioConfig) -> GridSim:
     data = scenario.raw
+    grid_size = int(data.get("grid_size", 20))
     agents = [
         SquadAgent(agent_id=a["id"], position=(float(a["position"][0]), float(a["position"][1])))
         for a in data["agents"]
@@ -27,10 +28,13 @@ def build_sim(scenario: ScenarioConfig) -> GridSim:
             guard_id=g["id"],
             position=(float(g["position"][0]), float(g["position"][1])),
             patrol_route=[(float(p[0]), float(p[1])) for p in g.get("patrol", [])],
+            vision_range=float(g.get("vision_range", 3.5)),
+            vision_angle_deg=float(g.get("vision_angle_deg", 120.0)),
+            patrol_speed=float(g.get("patrol_speed", 0.2)),
         )
         for g in data["guards"]
     ]
-    return GridSim(agents=agents, guards=guards)
+    return GridSim(width=grid_size, height=grid_size, agents=agents, guards=guards)
 
 
 def world_snapshot(
@@ -58,6 +62,8 @@ def world_snapshot(
                 "id": g.guard_id,
                 "position": list(g.position),
                 "vision_range": g.vision_range,
+                "vision_angle_deg": g.vision_angle_deg,
+                "heading": g.heading,
                 "state": g.state,
             }
             for g in sim.guards

@@ -1,5 +1,26 @@
 # Changelog
 
+## v1.9.0
+
+### Added
+- Tactical role movement: flank arcs, distract feints, stealth cover positions, overwatch hold — all bounded to the grid with heading updates.
+- Interpolated guard patrol (no waypoint teleporting), directional vision arc (~120°), and guard state labels in the viewer.
+- `simulation/bounds.py` with `clamp_position` / `is_in_bounds` helpers.
+- Scenario tuning: spawns kept ≥2 units from edges; optional `spawn_roles` hints in YAML.
+- Viewer HUD: guard vision arcs, patrol/investigate/chase state badges, soft clip for off-grid entities.
+- Tests: 300-tick in-bounds soak tests, guard AI patrol/vision tests, `tests/test_tactical_sim.py`.
+
+### Changed
+- `build_sim()` wires `grid_size` and per-guard `vision_range`, `vision_angle_deg`, `patrol_speed` from scenario YAML.
+- Overwatch utility scoring uses visible threat distance instead of polygon vertex count.
+- Agent movement passes `alert_level` for pressure-aware role behavior.
+
+## v1.8.0
+
+### Fixed
+- Agents and guards no longer drift off the viewer canvas — positions clamped to grid bounds after every movement update.
+- `move_away` blends toward objective when flee direction would exit bounds (prevents corner trapping).
+
 ## v1.7.0
 
 ### Added
