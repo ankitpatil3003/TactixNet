@@ -10,6 +10,7 @@ from typing import Any
 from client import SquadClient
 from contracts import AlertLevel, RoleEnum
 from simulation.grid import GridSim, Guard, SquadAgent
+from simulation.mission import MissionTracker, evaluate_mission, mission_snapshot
 from simulation.movement import step_agent_by_role
 from simulation.scenario import ScenarioConfig, load_scenario
 
@@ -33,9 +34,15 @@ def build_sim(scenario: ScenarioConfig) -> GridSim:
     return GridSim(agents=agents, guards=guards)
 
 
-def world_snapshot(sim: GridSim) -> dict[str, Any]:
+def world_snapshot(
+    sim: GridSim,
+    scenario: ScenarioConfig,
+    tracker: MissionTracker,
+    *,
+    alert_by_agent: dict[str, AlertLevel] | None = None,
+) -> dict[str, Any]:
     frames = sim.all_perceptions()
-    alert_by_agent = {f.agent_id: f.alert_level.value for f in frames}
+    alerts = alert_by_agent or {f.agent_id: f.alert_level for f in frames}
     return {
         "type": "world_snapshot",
         "tick": sim.tick,
@@ -43,7 +50,7 @@ def world_snapshot(sim: GridSim) -> dict[str, Any]:
             {
                 "id": a.agent_id,
                 "position": list(a.position),
-                "alert_level": alert_by_agent.get(a.agent_id, "CALM"),
+                "alert_level": alerts.get(a.agent_id, AlertLevel.CALM).value,
             }
             for a in sim.agents
         ],
@@ -56,6 +63,7 @@ def world_snapshot(sim: GridSim) -> dict[str, Any]:
             }
             for g in sim.guards
         ],
+        "mission": mission_snapshot(scenario, tracker, sim, alert_by_agent=alerts),
     }
 
 
@@ -81,7 +89,8 @@ async def run_demo(
     squad_id = client.squad_id
     assert squad_id is not None
 
-    stats = {"directives": 0, "replans": 0}
+    stats = {"directives": 0, "replans": 0, "mission": "active"}
+    tracker = MissionTracker()
     prefix = f"[squad-{squad_index}] " if squad_index else ""
     print(f"{prefix}Squad {squad_id} created — streaming {ticks} ticks at {effective_hz}Hz")
     print(f"{prefix}Scenario: {scenario.name} -> {scenario.objective}")
@@ -116,7 +125,7 @@ async def run_demo(
     interval = 1.0 / effective_hz
 
     try:
-        for _ in range(ticks):
+        for _tick_num in range(1, ticks + 1):
             sim.advance_tick()
             frames = sim.all_perceptions()
             alert_by_agent = {f.agent_id: f.alert_level for f in frames}
@@ -129,15 +138,26 @@ async def run_demo(
                     objective,
                     alert_level=alert_by_agent.get(agent.agent_id, AlertLevel.CALM),
                 )
-            await client.send_snapshot(world_snapshot(sim))
+            evaluate_mission(sim, scenario, tracker, alert_by_agent=alert_by_agent)
+            stats["mission"] = tracker.status
+            await client.send_snapshot(
+                world_snapshot(sim, scenario, tracker, alert_by_agent=alert_by_agent)
+            )
             for frame in sim.all_perceptions():
                 await client.send_frame(frame)
+            if tracker.is_finished():
+                outcome = "WON" if tracker.status == "won" else "LOST"
+                print(f"{prefix}Mission {outcome} at tick {sim.tick}: {tracker.reason}")
+                break
             await asyncio.sleep(interval)
     finally:
         receive_task.cancel()
         await client.aclose()
 
-    print(f"{prefix}Done: {stats['directives']} directives, {stats['replans']} replans")
+    print(
+        f"{prefix}Done: {stats['directives']} directives, {stats['replans']} replans, "
+        f"mission={stats['mission']}"
+    )
     return stats
 
 
