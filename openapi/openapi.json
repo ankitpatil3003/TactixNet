@@ -1,0 +1,541 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "TactixNet Gateway",
+    "version": "0.3.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Health",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Health Health Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/viewer": {
+      "get": {
+        "summary": "Viewer",
+        "operationId": "viewer_viewer_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/squads": {
+      "post": {
+        "summary": "Create Squad",
+        "operationId": "create_squad_squads_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSquadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SquadStateResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/squads/{squad_id}": {
+      "get": {
+        "summary": "Get Squad State",
+        "operationId": "get_squad_state_squads__squad_id__get",
+        "parameters": [
+          {
+            "name": "squad_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Squad Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SquadStateResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/squads/{squad_id}/scenario": {
+      "get": {
+        "summary": "Get Squad Scenario",
+        "operationId": "get_squad_scenario_squads__squad_id__scenario_get",
+        "parameters": [
+          {
+            "name": "squad_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Squad Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Response Get Squad Scenario Squads  Squad Id  Scenario Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/squads/{squad_id}/events": {
+      "get": {
+        "summary": "Get Squad Events",
+        "operationId": "get_squad_events_squads__squad_id__events_get",
+        "parameters": [
+          {
+            "name": "squad_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Squad Id"
+            }
+          },
+          {
+            "name": "count",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 100,
+              "title": "Count"
+            }
+          },
+          {
+            "name": "replay_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Replay Only"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Response Get Squad Events Squads  Squad Id  Events Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/squads/{squad_id}/doctrine": {
+      "post": {
+        "summary": "Update Doctrine",
+        "operationId": "update_doctrine_squads__squad_id__doctrine_post",
+        "parameters": [
+          {
+            "name": "squad_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Squad Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DoctrineUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SquadStateResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CreateSquadRequest": {
+        "properties": {
+          "agent_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Agent Ids"
+          },
+          "objective_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Objective Ref"
+          },
+          "scenario": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenario"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "agent_ids"
+        ],
+        "title": "CreateSquadRequest"
+      },
+      "DoctrineUpdate": {
+        "properties": {
+          "squad_id": {
+            "type": "string",
+            "title": "Squad Id"
+          },
+          "role_weights": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "propertyNames": {
+              "$ref": "#/components/schemas/RoleEnum"
+            },
+            "type": "object",
+            "title": "Role Weights"
+          },
+          "priority_objective": {
+            "type": "string",
+            "title": "Priority Objective"
+          },
+          "fallback_plan": {
+            "type": "string",
+            "title": "Fallback Plan",
+            "default": ""
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "squad_id",
+          "role_weights",
+          "priority_objective"
+        ],
+        "title": "DoctrineUpdate"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "RoleAward": {
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "title": "Agent Id"
+          },
+          "task_id": {
+            "type": "string",
+            "title": "Task Id"
+          },
+          "role": {
+            "$ref": "#/components/schemas/RoleEnum"
+          },
+          "utility": {
+            "type": "number",
+            "title": "Utility"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "agent_id",
+          "task_id",
+          "role",
+          "utility"
+        ],
+        "title": "RoleAward"
+      },
+      "RoleEnum": {
+        "type": "string",
+        "enum": [
+          "flank",
+          "distract",
+          "stealth-cover",
+          "overwatch",
+          "breach"
+        ],
+        "title": "RoleEnum"
+      },
+      "SquadDirective": {
+        "properties": {
+          "squad_id": {
+            "type": "string",
+            "title": "Squad Id"
+          },
+          "directive_seq": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Directive Seq"
+          },
+          "tick": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Tick"
+          },
+          "awards": {
+            "items": {
+              "$ref": "#/components/schemas/RoleAward"
+            },
+            "type": "array",
+            "title": "Awards"
+          },
+          "objective_ref": {
+            "type": "string",
+            "title": "Objective Ref"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "squad_id",
+          "directive_seq",
+          "tick",
+          "awards",
+          "objective_ref"
+        ],
+        "title": "SquadDirective"
+      },
+      "SquadStateResponse": {
+        "properties": {
+          "squad_id": {
+            "type": "string",
+            "title": "Squad Id"
+          },
+          "agent_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Agent Ids"
+          },
+          "tick": {
+            "type": "integer",
+            "title": "Tick"
+          },
+          "doctrine": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DoctrineUpdate"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "last_directive": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SquadDirective"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "objective_ref": {
+            "type": "string",
+            "title": "Objective Ref"
+          },
+          "scenario": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenario"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "squad_id",
+          "agent_ids",
+          "tick",
+          "doctrine",
+          "last_directive",
+          "objective_ref"
+        ],
+        "title": "SquadStateResponse"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}

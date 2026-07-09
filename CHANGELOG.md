@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.6.0
+
+### Added
+- TypeScript SDK (`@tactixnet/client` in `sdk/typescript`) — REST + WebSocket parity with Python `SquadClient`.
+- Committed OpenAPI spec at `openapi/openapi.json`; export via `python scripts/export_openapi.py`.
+- Interactive API docs at `/docs` and `/openapi.json` on the gateway.
+- Integration guides: `examples/node`, `examples/unity`, `examples/godot`.
+- Python `SquadClient.get_events()` for replay/event log access.
+
+### Changed
+- README documents SDK paths, OpenAPI workflow, and engine integration examples.
+
 ## v1.5.0
 
 ### Added
