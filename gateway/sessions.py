@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from contracts.events import DoctrineUpdate, PerceptionFrame, SquadDirective
-from gateway.live import LiveNegotiationRunner
+from engine.live import LiveNegotiationRunner
 
 
 @dataclass
@@ -36,6 +36,7 @@ class SessionStore:
         objective_ref: str = "breach-alpha",
         scenario: dict[str, Any] | None = None,
         checkpoint_bus: Any | None = None,
+        distributed: bool = False,
     ) -> SquadSession:
         session = SquadSession(
             squad_id=squad_id,
@@ -43,12 +44,13 @@ class SessionStore:
             objective_ref=objective_ref,
             scenario=scenario,
         )
-        session.runner = LiveNegotiationRunner(
-            squad_id=squad_id,
-            agent_ids=agent_ids,
-            objective_ref=objective_ref,
-            checkpoint_bus=checkpoint_bus,
-        )
+        if not distributed:
+            session.runner = LiveNegotiationRunner(
+                squad_id=squad_id,
+                agent_ids=agent_ids,
+                objective_ref=objective_ref,
+                checkpoint_bus=checkpoint_bus,
+            )
         self._sessions[squad_id] = session
         return session
 

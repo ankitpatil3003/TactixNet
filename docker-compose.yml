@@ -9,6 +9,21 @@ services:
       timeout: 3s
       retries: 5
 
+  engine:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: python -m engine.runner
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      ENGINE_MODE: distributed
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      ENGINE_LOG_LEVEL: ${ENGINE_LOG_LEVEL:-INFO}
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
   gateway:
     build:
       context: .
@@ -18,10 +33,13 @@ services:
       - "8000:8000"
     environment:
       REDIS_URL: redis://redis:6379/0
+      ENGINE_MODE: distributed
       GROQ_API_KEY: ${GROQ_API_KEY:-}
     depends_on:
       redis:
         condition: service_healthy
+      engine:
+        condition: service_started
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 10s

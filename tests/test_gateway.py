@@ -17,6 +17,8 @@ def test_health_reports_status() -> None:
     assert body["status"] == "ok"
     assert body["event_log"] in {"connected", "offline"}
     assert body["session_store"] in {"connected", "offline"}
+    assert body["engine_mode"] in {"inprocess", "distributed"}
+    assert body["hot_path_bus"] in {"connected", "offline"}
 
 
 def test_create_and_get_squad() -> None:
