@@ -1,5 +1,19 @@
 # Changelog
 
+## v1.4.0
+
+### Added
+- Distributed engine mode (`ENGINE_MODE=distributed`): gateway publishes perceptions to Redis; `engine.runner` worker negotiates and publishes directive envelopes.
+- `DirectiveRelay` in gateway fans out engine directives/doctrine to WebSocket clients.
+- `EngineWorker` with squad registration via `squad:{id}:control` channel.
+- Docker Compose `engine` service; gateway defaults to distributed in compose stack.
+- `/health` fields: `engine_mode`, `hot_path_bus`.
+- `engine/live.py` — negotiation runner moved from gateway for shared in-process and distributed use.
+
+### Changed
+- `ENGINE_MODE=inprocess` remains the default for local single-process dev.
+- `engine/bus.py` extended with control, directive envelope, and pattern subscribe helpers.
+
 ## v1.3.1
 
 ### Fixed

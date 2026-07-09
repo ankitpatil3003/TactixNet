@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 from contextlib import asynccontextmanager
@@ -21,20 +22,25 @@ from contracts import (
     SquadDirective,
 )
 from engine.bus import MessageBus
+from engine.worker import is_distributed_mode
 from gateway.events import SquadEventLogger
 from gateway.live import CycleResult
 from gateway.persistence import SessionPersistence
+from gateway.relay import DirectiveRelay
 from gateway.sessions import SessionStore, SquadSession
 
 event_logger = SquadEventLogger()
 session_persistence = SessionPersistence()
 store = SessionStore()
 _checkpoint_bus: MessageBus | None = None
+_hot_path_bus: MessageBus | None = None
+_directive_relay: DirectiveRelay | None = None
+_relay_task: asyncio.Task[None] | None = None
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    global _checkpoint_bus
+    global _checkpoint_bus, _hot_path_bus, _directive_relay, _relay_task
     await event_logger.connect()
     await session_persistence.connect()
     if os.environ.get("USE_REDIS_CHECKPOINT") == "1":
@@ -43,9 +49,35 @@ async def lifespan(_app: FastAPI):
             await _checkpoint_bus.connect()
         except Exception:
             _checkpoint_bus = None
+    if is_distributed_mode():
+        try:
+            _hot_path_bus = MessageBus()
+            await _hot_path_bus.connect()
+            _directive_relay = DirectiveRelay(
+                _hot_path_bus,
+                store,
+                on_persist=_persist_session,
+                on_broadcast=_broadcast_to_session,
+                on_event=event_logger.log,
+            )
+            _relay_task = asyncio.create_task(_directive_relay.run())
+        except Exception:
+            _hot_path_bus = None
+            _directive_relay = None
     yield
+    if _relay_task is not None:
+        _relay_task.cancel()
+        try:
+            await _relay_task
+        except asyncio.CancelledError:
+            pass
+        _relay_task = None
     await event_logger.close()
     await session_persistence.close()
+    if _hot_path_bus is not None:
+        await _hot_path_bus.close()
+        _hot_path_bus = None
+        _directive_relay = None
     if _checkpoint_bus is not None:
         await _checkpoint_bus.close()
         _checkpoint_bus = None
@@ -83,6 +115,8 @@ async def health() -> dict[str, str]:
         "status": "ok",
         "event_log": "connected" if event_logger.available else "offline",
         "session_store": "connected" if session_persistence.available else "offline",
+        "engine_mode": "distributed" if is_distributed_mode() else "inprocess",
+        "hot_path_bus": "connected" if _hot_path_bus is not None else "offline",
     }
 
 
@@ -124,12 +158,14 @@ async def _rehydrate_session(squad_id: str) -> SquadSession | None:
         objective_ref=meta.get("objective_ref", "breach-alpha"),
         scenario=meta.get("scenario"),
         checkpoint_bus=_checkpoint_bus,
+        distributed=is_distributed_mode(),
     )
     session.tick = int(meta.get("tick", 0))
     session.doctrine = doctrine
     session.last_directive = last_directive
     if doctrine is not None and session.runner is not None:
         session.runner.apply_doctrine(doctrine)
+    await _register_distributed_squad(session)
     return session
 
 
@@ -154,8 +190,10 @@ async def create_squad(body: CreateSquadRequest) -> SquadStateResponse:
         objective_ref=objective_ref,
         scenario=body.scenario,
         checkpoint_bus=_checkpoint_bus,
+        distributed=is_distributed_mode(),
     )
     await _persist_session(session)
+    await _register_distributed_squad(session)
     return _session_to_response(session)
 
 
@@ -272,17 +310,32 @@ async def _broadcast(sockets: set[Any], message: dict[str, Any]) -> None:
         sockets.discard(socket)
 
 
+async def _broadcast_to_session(session: SquadSession, message: dict[str, Any]) -> None:
+    await _broadcast(session.sockets, message)
+
+
+async def _register_distributed_squad(session: SquadSession) -> None:
+    if _directive_relay is not None:
+        await _directive_relay.register_squad(session)
+
+
 async def _apply_doctrine(
     session: SquadSession, doctrine: DoctrineUpdate, *, source: str
 ) -> None:
     session.doctrine = doctrine
-    if session.runner is not None:
-        session.runner.apply_doctrine(doctrine)
     message = {
         "type": "doctrine",
         "source": source,
         "doctrine": doctrine.model_dump(mode="json"),
     }
+    if is_distributed_mode():
+        if _directive_relay is not None:
+            await _directive_relay.publish_doctrine(session, doctrine, source=source)
+        await _broadcast(session.sockets, message)
+        await event_logger.log(session.squad_id, "doctrine", message)
+        return
+    if session.runner is not None:
+        session.runner.apply_doctrine(doctrine)
     await _broadcast(session.sockets, message)
     await event_logger.log(session.squad_id, "doctrine", message)
 
@@ -387,6 +440,17 @@ async def squad_websocket(websocket: WebSocket, squad_id: str) -> None:
                 "perception",
                 frame.model_dump(mode="json"),
             )
+
+            if is_distributed_mode():
+                if _hot_path_bus is None:
+                    error = ErrorResponse(
+                        code=ErrorCode.INTERNAL_ERROR,
+                        message="Distributed engine bus unavailable",
+                    )
+                    await websocket.send_json({"type": "error", **error.model_dump()})
+                    continue
+                await _hot_path_bus.publish_perception(session.squad_id, frame)
+                continue
 
             assert session.runner is not None
             results = await session.runner.ingest_frame(frame)
