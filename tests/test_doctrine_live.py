@@ -64,8 +64,14 @@ async def test_strategy_refresh_does_not_block_reflex_loop() -> None:
     async def slow_apply(doctrine) -> None:
         applied.append(doctrine.priority_objective)
 
+    available_patch = patch.object(
+        type(runner._strategy),
+        "available",
+        new_callable=PropertyMock,
+        return_value=True,
+    )
     with (
-        patch.object(type(runner._strategy), "available", new_callable=PropertyMock, return_value=True),
+        available_patch,
         patch.object(
             runner._strategy,
             "generate_doctrine",
