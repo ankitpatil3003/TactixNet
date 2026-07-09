@@ -619,6 +619,14 @@ async def squad_websocket(websocket: WebSocket, squad_id: str) -> None:
     session.sockets.add(websocket)
     if mode == "observer":
         session.observers.add(websocket)
+        if session.doctrine is not None:
+            await websocket.send_json(
+                {
+                    "type": "doctrine",
+                    "source": "session",
+                    "doctrine": session.doctrine.model_dump(mode="json"),
+                }
+            )
 
     try:
         while True:

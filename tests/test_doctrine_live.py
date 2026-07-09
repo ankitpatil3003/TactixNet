@@ -1,12 +1,12 @@
 """Tests for live doctrine application and async strategy layer."""
 
 import json
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, PropertyMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
-from contracts import AlertLevel, RoleEnum
+from contracts import AlertLevel, DoctrineUpdate, RoleEnum
 from gateway.app import app
 from gateway.live import LiveNegotiationRunner
 
@@ -64,10 +64,19 @@ async def test_strategy_refresh_does_not_block_reflex_loop() -> None:
     async def slow_apply(doctrine) -> None:
         applied.append(doctrine.priority_objective)
 
-    with patch.object(
-        runner._strategy,
-        "generate_doctrine",
-        new=AsyncMock(side_effect=Exception("LLM down")),
+    available_patch = patch.object(
+        type(runner._strategy),
+        "available",
+        new_callable=PropertyMock,
+        return_value=True,
+    )
+    with (
+        available_patch,
+        patch.object(
+            runner._strategy,
+            "generate_doctrine",
+            new=AsyncMock(side_effect=Exception("LLM down")),
+        ),
     ):
         runner.schedule_strategy_refresh(
             tick=100,
@@ -83,6 +92,62 @@ async def test_strategy_refresh_does_not_block_reflex_loop() -> None:
 
     results = await runner.ingest_frame(PerceptionFrame.model_validate(frame))
     assert len(results) == 1
+
+
+@pytest.mark.asyncio
+async def test_strategy_refresh_skipped_when_backend_unavailable() -> None:
+    runner = LiveNegotiationRunner(squad_id="skip-strategy", agent_ids=AGENT_IDS)
+    applied: list[DoctrineUpdate] = []
+
+    async def on_applied(doctrine: DoctrineUpdate) -> None:
+        applied.append(doctrine)
+
+    runner.apply_doctrine(
+        DoctrineUpdate(
+            squad_id="skip-strategy",
+            role_weights={RoleEnum.DISTRACT: 5.0},
+            priority_objective="breach-gate",
+        )
+    )
+    runner.schedule_strategy_refresh(
+        tick=100,
+        context="test",
+        after_replan=False,
+        on_applied=on_applied,
+    )
+    assert runner._strategy_task is None
+    assert applied == []
+
+
+def test_manual_doctrine_not_overwritten_without_strategy_backend() -> None:
+    """Periodic strategy refresh must not reset console weights to 1.0 without GROQ."""
+    create = client.post("/squads", json={"agent_ids": AGENT_IDS})
+    squad_id = create.json()["squad_id"]
+    doctrine = {
+        "squad_id": squad_id,
+        "role_weights": {
+            RoleEnum.DISTRACT.value: 5.0,
+            RoleEnum.FLANK.value: 0.1,
+            RoleEnum.STEALTH_COVER.value: 0.1,
+            RoleEnum.OVERWATCH.value: 0.1,
+            RoleEnum.BREACH.value: 0.1,
+        },
+        "priority_objective": "breach-gate",
+    }
+    client.post(f"/squads/{squad_id}/doctrine", json=doctrine)
+
+    with client.websocket_connect(f"/ws/squads/{squad_id}") as ws:
+        for tick in range(1, 121):
+            for agent_id in AGENT_IDS:
+                ws.send_text(_frame(agent_id, tick=tick))
+            while True:
+                msg = ws.receive_json()
+                if msg.get("type") == "directive" and msg["directive"]["tick"] == tick:
+                    break
+
+    state = client.get(f"/squads/{squad_id}").json()
+    assert state["doctrine"]["role_weights"][RoleEnum.DISTRACT.value] == 5.0
+    assert state["doctrine"]["role_weights"][RoleEnum.FLANK.value] == 0.1
 
 
 @pytest.mark.asyncio
