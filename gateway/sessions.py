@@ -22,6 +22,7 @@ class SquadSession:
     observers: set[Any] = field(default_factory=set)
     objective_ref: str = "breach-alpha"
     scenario: dict[str, Any] | None = None
+    scenario_file: str | None = None
 
 
 class SessionStore:
@@ -35,6 +36,7 @@ class SessionStore:
         *,
         objective_ref: str = "breach-alpha",
         scenario: dict[str, Any] | None = None,
+        scenario_file: str | None = None,
         checkpoint_bus: Any | None = None,
         distributed: bool = False,
     ) -> SquadSession:
@@ -43,6 +45,7 @@ class SessionStore:
             agent_ids=agent_ids,
             objective_ref=objective_ref,
             scenario=scenario,
+            scenario_file=scenario_file,
         )
         if not distributed:
             session.runner = LiveNegotiationRunner(

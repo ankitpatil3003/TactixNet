@@ -3,9 +3,10 @@ from pathlib import Path
 import pytest
 
 from contracts import RoleEnum
+from simulation.driver import build_sim, world_snapshot
 from simulation.mission import MissionTracker
 from simulation.movement import step_agent_by_role
-from simulation.run_demo import DEFAULT_SCENARIO, build_sim, world_snapshot
+from simulation.run_demo import DEFAULT_SCENARIO
 from simulation.scenario import load_scenario
 
 

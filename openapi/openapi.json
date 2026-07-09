@@ -43,7 +43,39 @@
         }
       }
     },
+    "/console": {
+      "get": {
+        "summary": "Console",
+        "operationId": "console_console_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
     "/squads": {
+      "get": {
+        "summary": "List Squads",
+        "operationId": "list_squads_squads_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SquadListResponse"
+                }
+              }
+            }
+          }
+        }
+      },
       "post": {
         "summary": "Create Squad",
         "operationId": "create_squad_squads_post",
@@ -52,6 +84,63 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/CreateSquadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SquadStateResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/scenarios": {
+      "get": {
+        "summary": "List Scenarios",
+        "operationId": "list_scenarios_scenarios_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Response List Scenarios Scenarios Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/squads/from-scenario": {
+      "post": {
+        "summary": "Create Squad From Scenario",
+        "operationId": "create_squad_from_scenario_squads_from_scenario_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSquadFromScenarioRequest"
               }
             }
           },
@@ -268,10 +357,156 @@
           }
         }
       }
+    },
+    "/squads/{squad_id}/simulate": {
+      "post": {
+        "summary": "Start Simulation",
+        "operationId": "start_simulation_squads__squad_id__simulate_post",
+        "parameters": [
+          {
+            "name": "squad_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Squad Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartSimulationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Response Start Simulation Squads  Squad Id  Simulate Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/squads/{squad_id}/simulation": {
+      "get": {
+        "summary": "Get Simulation Status",
+        "operationId": "get_simulation_status_squads__squad_id__simulation_get",
+        "parameters": [
+          {
+            "name": "squad_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Squad Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Response Get Simulation Status Squads  Squad Id  Simulation Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/squads/{squad_id}/simulate/cancel": {
+      "post": {
+        "summary": "Cancel Simulation",
+        "operationId": "cancel_simulation_squads__squad_id__simulate_cancel_post",
+        "parameters": [
+          {
+            "name": "squad_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Squad Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Response Cancel Simulation Squads  Squad Id  Simulate Cancel Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "CreateSquadFromScenarioRequest": {
+        "properties": {
+          "scenario": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Scenario",
+            "description": "Scenario file name without .yaml"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "scenario"
+        ],
+        "title": "CreateSquadFromScenarioRequest"
+      },
       "CreateSquadRequest": {
         "properties": {
           "agent_ids": {
@@ -438,6 +673,28 @@
         ],
         "title": "SquadDirective"
       },
+      "SquadListResponse": {
+        "properties": {
+          "squads": {
+            "items": {
+              "$ref": "#/components/schemas/SquadSummaryResponse"
+            },
+            "type": "array",
+            "title": "Squads"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "squads",
+          "total"
+        ],
+        "title": "SquadListResponse"
+      },
       "SquadStateResponse": {
         "properties": {
           "squad_id": {
@@ -502,6 +759,98 @@
           "objective_ref"
         ],
         "title": "SquadStateResponse"
+      },
+      "SquadSummaryResponse": {
+        "properties": {
+          "squad_id": {
+            "type": "string",
+            "title": "Squad Id"
+          },
+          "agent_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Agent Ids"
+          },
+          "tick": {
+            "type": "integer",
+            "title": "Tick"
+          },
+          "objective_ref": {
+            "type": "string",
+            "title": "Objective Ref"
+          },
+          "has_doctrine": {
+            "type": "boolean",
+            "title": "Has Doctrine"
+          },
+          "scenario_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenario Name"
+          },
+          "simulation": {
+            "type": "object",
+            "title": "Simulation"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "squad_id",
+          "agent_ids",
+          "tick",
+          "objective_ref",
+          "has_doctrine",
+          "simulation"
+        ],
+        "title": "SquadSummaryResponse"
+      },
+      "StartSimulationRequest": {
+        "properties": {
+          "scenario": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenario",
+            "description": "Scenario name; defaults to squad metadata if attached at creation"
+          },
+          "ticks": {
+            "type": "integer",
+            "maximum": 10000.0,
+            "minimum": 1.0,
+            "title": "Ticks",
+            "default": 300
+          },
+          "hz": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 60.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hz"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "StartSimulationRequest"
       },
       "ValidationError": {
         "properties": {
