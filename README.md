@@ -159,8 +159,8 @@ tactixnet/
 ├── openapi/       # Exported OpenAPI schema (openapi.json)
 ├── simulation/    # Headless grid sim, YAML scenarios, demo driver, benchmark CLI
 ├── viewer/        # Canvas visualizer (served by the gateway at /viewer)
-├── tests/         # Unit + integration + e2e (60+ tests)
-└── docs/          # Architecture, protocol, benchmark methodology + results
+├── tests/         # Unit + integration + e2e (99 tests)
+└── docs/          # Architecture, simulation, protocol, benchmark methodology + results
 ```
 
 ## API Reference
@@ -170,11 +170,18 @@ tactixnet/
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/health` | GET | Liveness + Redis connectivity (`event_log`, `session_store`) |
+| `/squads` | GET | List active squads |
 | `/squads` | POST | Create squad — `{"agent_ids": [...], "objective_ref"?, "scenario"?}` |
+| `/squads/from-scenario` | POST | Create squad from built-in scenario name |
+| `/scenarios` | GET | List available scenario YAML files |
 | `/squads/{id}` | GET | Squad state incl. `last_directive`, `objective_ref` |
 | `/squads/{id}/scenario` | GET | Scenario metadata attached at squad creation |
 | `/squads/{id}/doctrine` | POST | Update strategy doctrine (applies weights immediately) |
+| `/squads/{id}/simulate` | POST | Start background simulation (`ticks`, `hz` optional) |
+| `/squads/{id}/simulation` | GET | Simulation status for a squad |
+| `/squads/{id}/simulate/cancel` | POST | Cancel running simulation |
 | `/squads/{id}/events` | GET | Event log for replay (`?count=10000&replay_only=true`) |
+| `/console` | GET | Squad Console UI (create → doctrine → simulate) |
 | `/openapi.json` | GET | OpenAPI 3 schema |
 | `/docs` | GET | Swagger UI |
 | `/viewer` | GET | Canvas viewer page |
@@ -215,6 +222,35 @@ tactixnet/
 
 Connect with `?mode=observer` to receive directives and `world_snapshot` relays without participating (used by the viewer). Malformed frames get a structured `{"type": "error", "code": "MALFORMED_FRAME", ...}` reply.
 
+**Observer relay** — `world_snapshot` (from demo driver or `POST /squads/{id}/simulate`):
+
+```json
+{
+  "type": "world_snapshot",
+  "tick": 42,
+  "agents": [{ "id": "a1", "position": [3.5, 4.0], "alert_level": "CALM" }],
+  "guards": [{
+    "id": "g1", "position": [10, 10], "vision_range": 3.5,
+    "vision_angle_deg": 120, "heading": 45.0, "state": "patrol"
+  }],
+  "mission": { "objective": "breach-gate", "status": "active" }
+}
+```
+
+## v1.9 Highlights
+
+- **Bounds hotfix (v1.8):** all agents and guards stay in-bounds; `grid_size` wired from scenarios; edge flee blends toward objective.
+- **Tactical movement:** per-role behaviors — flank arc, distract feint, stealth cover, overwatch hold, breach push — with heading updates.
+- **Guard AI:** interpolated patrol (no teleporting), directional ~120° vision arc, investigate/chase states in viewer.
+- **Scenarios:** spawns retuned away from edges; optional `spawn_roles` in YAML for deterministic demos.
+- **Tests:** 300-tick soak tests, guard AI tests, `test_tactical_sim.py` (99 tests total).
+
+## v1.7 Highlights
+
+- **Squad Console:** `/console` — create idle squads, apply doctrine, start simulation on demand.
+- **Control plane:** `GET /scenarios`, `POST /squads/from-scenario`, `POST /squads/{id}/simulate`, simulation status/cancel endpoints.
+- **Doctrine fix:** strategy refresh no longer overwrites manual doctrine sliders when Groq is unavailable.
+
 ## v1.6 Highlights
 
 - **TypeScript SDK:** `@tactixnet/client` for Node 18+ (create, connect, frames, directives, events).
@@ -246,7 +282,6 @@ Connect with `?mode=observer` to receive directives and `world_snapshot` relays 
 
 - **Doctrine is live:** `POST /doctrine` and async Groq strategy refresh apply weights to the reflex bidder; broadcasts `{"type": "doctrine"}` on update.
 - **Event sourcing:** all perception/directive/interrupt events logged (Redis + in-memory fallback); replay in the viewer.
-- **Living world:** guards patrol smoothly and chase spotted agents with directional vision; squad agents move by awarded role with tactical behaviors (flank, distract, cover, overwatch, breach); all entities stay in-bounds; `COMPROMISED` after sustained close contact.
 - **recovery_ms:** measured interrupt-to-replan latency on every interrupted cycle.
 - **Concurrency:** per-session locks, multi-squad isolation, opt-in soak test (`pytest -m soak`).
 
@@ -329,7 +364,8 @@ python scripts/export_openapi.py   # writes openapi/openapi.json
 
 ## Documentation
 
-- [Architecture](docs/architecture.md) — two-tier brain, components, interrupt replanning
+- [Architecture](docs/architecture.md) — two-tier brain, components, living simulation, interrupt replanning
+- [Simulation](docs/simulation.md) — grid sim, guard AI, role movement, scenario YAML, world_snapshot
 - [Protocol](docs/protocol.md) — CNP cycle, utility functions, timeout policy
 - [Benchmark methodology](docs/benchmark-methodology.md) and [latest results](docs/benchmark-results.md)
 

@@ -62,7 +62,22 @@ Use `ClientWebSocket` (.NET) or a third-party WebSocket library on platforms whe
 
 ## Observer / viewer relay
 
-Send `world_snapshot` JSON (same shape as the Python demo) so the browser viewer at `/viewer?squad={id}` can render positions.
+Send `world_snapshot` JSON so the browser viewer at `/viewer?squad={id}` can render positions, guard vision arcs, and mission state:
+
+```json
+{
+  "type": "world_snapshot",
+  "tick": 42,
+  "agents": [{ "id": "a1", "position": [3.5, 4.0], "alert_level": "CALM" }],
+  "guards": [{
+    "id": "g1", "position": [10, 10], "vision_range": 3.5,
+    "vision_angle_deg": 120, "heading": 45.0, "state": "patrol"
+  }],
+  "mission": { "objective": "breach-gate", "status": "active" }
+}
+```
+
+See [docs/simulation.md](../../docs/simulation.md) for the full scenario and snapshot reference.
 
 ## C# sketch
 

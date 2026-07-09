@@ -16,7 +16,7 @@ Each role has a dedicated utility function in `agents/utility.py`:
 - **Flank** — High when calm, reduced when compromised
 - **Distract** — High when compromised or under threat
 - **Stealth-cover** — High in calm/suspicious states
-- **Overwatch** — Scales with visibility polygon coverage
+- **Overwatch** — Higher when threats are visible but distant; penalized when compromised
 - **Breach** — Scales with ammo ratio, penalized when compromised
 
 ## Timeout Policy
