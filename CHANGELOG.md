@@ -9,6 +9,7 @@
 - Scenario tuning: spawns kept ≥2 units from edges; optional `spawn_roles` hints in YAML.
 - Viewer HUD: guard vision arcs, patrol/investigate/chase state badges, soft clip for off-grid entities.
 - Tests: 300-tick in-bounds soak tests, guard AI patrol/vision tests, `tests/test_tactical_sim.py`.
+- Documentation: `docs/simulation.md` (scenario YAML, guard AI, world_snapshot); updated architecture, protocol, and integration guides.
 
 ### Changed
 - `build_sim()` wires `grid_size` and per-guard `vision_range`, `vision_angle_deg`, `patrol_speed` from scenario YAML.

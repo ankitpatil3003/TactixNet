@@ -46,7 +46,7 @@ await squad.close();
 | `SquadClient.create()` | `POST /squads` |
 | `connect({ observer })` | WebSocket `/ws/squads/{id}` |
 | `sendFrame()` | Send `PerceptionFrame` |
-| `sendSnapshot()` | Relay `world_snapshot` to observers |
+| `sendSnapshot()` | Relay `world_snapshot` to observers (see `docs/simulation.md`) |
 | `receiveDirective()` | Wait for next directive message |
 | `applyDoctrine()` | `POST /squads/{id}/doctrine` |
 | `getState()` | `GET /squads/{id}` |

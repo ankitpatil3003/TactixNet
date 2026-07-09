@@ -27,3 +27,5 @@ Set `TACTIXNET_GATEWAY=http://localhost:8000` to override the default URL.
 2. Connects WebSocket and sends one `PerceptionFrame`
 3. Waits for a `directive` response
 4. Fetches recent events via `GET /squads/{id}/events`
+
+For simulation `world_snapshot` shape and scenario YAML, see [docs/simulation.md](../../docs/simulation.md).

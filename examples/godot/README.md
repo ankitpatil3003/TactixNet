@@ -69,9 +69,10 @@ func send_perception(agent_id: String, tick: int, pos: Vector2) -> void:
 
 ## Viewer
 
-Open `http://localhost:8000/viewer?squad={squad_id}` to debug negotiations live.
+Open `http://localhost:8000/viewer?squad={squad_id}` to debug negotiations live. Guards render directional vision arcs and patrol/investigate/chase state badges.
 
 ## Specs
 
+- Simulation reference: `docs/simulation.md`
 - OpenAPI: `openapi/openapi.json` or live `/openapi.json`
 - Protocol details: `docs/protocol.md`
