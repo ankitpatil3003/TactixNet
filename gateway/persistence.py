@@ -58,6 +58,11 @@ class SessionPersistence:
                 ids.append(parts[1])
         return ids
 
+    async def delete(self, squad_id: str) -> None:
+        if self._bus is None:
+            return
+        await self._bus.client.delete(self._meta_key(squad_id))
+
     async def close(self) -> None:
         if self._bus is not None:
             await self._bus.close()

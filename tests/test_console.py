@@ -16,6 +16,11 @@ def client() -> TestClient:
     with TestClient(app) as test_client:
         app_module._simulation_runner = SimulationRunner("http://testserver")
         yield test_client
+        runner = app_module._simulation_runner
+        if runner is not None:
+            for state in runner._states.values():
+                if state.status == "running":
+                    test_client.post(f"/squads/{state.squad_id}/simulate/cancel")
 
 
 def test_console_served(client: TestClient) -> None:
@@ -66,12 +71,12 @@ def test_simulate_starts_background_task(client: TestClient) -> None:
     target = "gateway.simulation_runner.stream_simulation"
     with patch(target, new_callable=AsyncMock) as mock_stream:
         mock_stream.return_value = {
-            "directives": 1,
-            "replans": 0,
-            "mission": "active",
+            "directives": 3,
+            "replans": 1,
+            "mission": "won",
             "ticks_run": 5,
-            "finished": False,
-            "reason": "",
+            "finished": True,
+            "reason": "3 agent(s) reached objective",
         }
         start = client.post(f"/squads/{squad_id}/simulate", json={"ticks": 5})
         assert start.status_code == 200
@@ -79,7 +84,11 @@ def test_simulate_starts_background_task(client: TestClient) -> None:
 
     status = client.get(f"/squads/{squad_id}/simulation")
     assert status.status_code == 200
-    assert status.json()["simulation"]["status"] in {"running", "finished", "error"}
+    sim_state = status.json()["simulation"]
+    assert sim_state["status"] in {"running", "finished", "error"}
+    if sim_state["status"] == "finished":
+        assert sim_state["directives"] == 3
+        assert sim_state["reason"] == "3 agent(s) reached objective"
 
 
 def test_doctrine_before_simulate_flow(client: TestClient) -> None:

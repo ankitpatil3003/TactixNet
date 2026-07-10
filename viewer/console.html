@@ -72,8 +72,12 @@
     }
     .pill.running { color: var(--warn); border-color: var(--warn); }
     .pill.finished { color: var(--ok); border-color: var(--ok); }
+    .pill.won { color: var(--ok); border-color: var(--ok); }
+    .pill.lost { color: var(--err); border-color: var(--err); }
+    .pill.cancelled { color: var(--warn); border-color: var(--warn); }
     .pill.idle { color: var(--muted); }
     .pill.error { color: var(--err); border-color: var(--err); }
+    .pill.active { color: var(--accent); border-color: var(--accent); }
     .weights { display: grid; grid-template-columns: 8rem 1fr 3rem; gap: 0.45rem 0.75rem; align-items: center; max-width: 480px; margin-top: 0.5rem; }
     .weights input[type=range] { width: 100%; margin: 0; }
     .weights span { text-align: right; color: var(--text); }
@@ -86,6 +90,11 @@
     #toast.show { opacity: 1; }
     .links a { margin-right: 0.75rem; color: var(--accent); font-size: 0.85rem; }
     #status-bar { font-size: 0.85rem; color: var(--muted); margin-bottom: 0.75rem; }
+    .guard-table input[type=number] { width: 4.5rem; }
+    .guard-table input[type=text] { width: 5rem; }
+    .guard-table td { vertical-align: middle; }
+    .row-actions button { margin: 0; padding: 0.25rem 0.45rem; font-size: 0.75rem; }
+    .hint { font-size: 0.8rem; color: var(--muted); margin-top: 0.35rem; }
   </style>
 </head>
 <body>
@@ -104,6 +113,8 @@
         <thead>
           <tr>
             <th>ID</th>
+            <th>Scenario</th>
+            <th>Guards</th>
             <th>Agents</th>
             <th>Tick</th>
             <th>Doctrine</th>
@@ -111,7 +122,7 @@
           </tr>
         </thead>
         <tbody id="squad-rows">
-          <tr><td colspan="5">No squads yet</td></tr>
+          <tr><td colspan="7">No squads yet</td></tr>
         </tbody>
       </table>
     </section>
@@ -136,7 +147,40 @@
           <a id="link-replay" href="#" target="_blank">Replay</a>
         </div>
 
-        <h3 style="font-size:0.95rem;margin:0 0 0.5rem">Doctrine (apply before Start)</h3>
+        <h3 style="font-size:0.95rem;margin:0 0 0.5rem">World setup (apply before Start)</h3>
+        <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:0.75rem">
+          <div>
+            <label for="obj-x">Objective X</label>
+            <input id="obj-x" type="number" min="0" max="99" step="0.5" />
+          </div>
+          <div>
+            <label for="obj-y">Objective Y</label>
+            <input id="obj-y" type="number" min="0" max="99" step="0.5" />
+          </div>
+          <div>
+            <label for="grid-size">Grid size</label>
+            <input id="grid-size" type="number" min="4" max="100" />
+          </div>
+        </div>
+        <table class="guard-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>X</th>
+              <th>Y</th>
+              <th>Vision</th>
+              <th>Patrol (x,y;…)</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="guard-rows"></tbody>
+        </table>
+        <button type="button" id="add-guard-btn" class="secondary">Add guard</button>
+        <button type="button" id="save-scenario-btn">Save world</button>
+        <button type="button" id="reset-scenario-btn" class="secondary">Reset to file</button>
+        <p class="hint" id="guard-hint">Patrol waypoints define the guard route. Single point = stationary.</p>
+
+        <h3 style="font-size:0.95rem;margin:1rem 0 0.5rem">Doctrine (apply before Start)</h3>
         <label for="priority-objective">Priority objective</label>
         <input id="priority-objective" type="text" value="breach-gate" />
         <div class="weights" id="weights"></div>
@@ -144,12 +188,15 @@
         <div id="doctrine-preview" style="font-size:0.8rem;color:var(--muted);margin-top:0.35rem"></div>
 
         <h3 style="font-size:0.95rem;margin:1rem 0 0.5rem">Simulation</h3>
+        <label for="sim-scenario-select">Scenario override</label>
+        <select id="sim-scenario-select"></select>
         <label for="ticks">Ticks</label>
         <input id="ticks" type="number" min="1" max="10000" value="300" />
         <label for="hz">Tick rate (Hz, optional)</label>
         <input id="hz" type="number" min="1" max="60" placeholder="scenario default" />
         <button type="button" id="start-btn">Start simulation</button>
         <button type="button" id="cancel-btn" class="danger">Cancel</button>
+        <button type="button" id="delete-btn" class="danger">Delete squad</button>
         <div id="sim-status" style="margin-top:0.75rem;font-size:0.85rem;color:var(--muted)"></div>
       </div>
     </section>
@@ -163,6 +210,8 @@
 
     let selectedId = null;
     let pollTimer = null;
+    let squadScenario = null;
+    let scenarioMeta = {};
 
     const el = (id) => document.getElementById(id);
 
@@ -194,7 +243,31 @@
 
     function simPill(sim) {
       const s = sim?.status || 'idle';
-      return `<span class="pill ${s}">${s}</span>`;
+      const mission = sim?.mission;
+      const cls = mission === 'won' ? 'won'
+        : mission === 'lost' ? 'lost'
+        : mission === 'cancelled' ? 'cancelled'
+        : mission === 'active' && s === 'running' ? 'running'
+        : mission === 'active' ? 'active'
+        : s;
+      const label = mission && mission !== 'idle' ? `${s}/${mission}` : s;
+      return `<span class="pill ${cls}">${label}</span>`;
+    }
+
+    function formatSimStatus(sim) {
+      if (!sim) return 'No simulation run yet';
+      const parts = [
+        `Status: ${sim.status}`,
+        `ticks ${sim.ticks_run || 0}/${sim.ticks_requested || '–'}`,
+        `mission: ${sim.mission || '–'}`,
+      ];
+      if (sim.scenario) parts.push(`scenario: ${sim.scenario}`);
+      if (sim.directives != null) parts.push(`directives: ${sim.directives}`);
+      if (sim.replans != null) parts.push(`replans: ${sim.replans}`);
+      if (sim.reason) parts.push(`reason: ${sim.reason}`);
+      if (sim.error) parts.push(`error: ${sim.error}`);
+      if (selectedId) parts.push(`viewer: /viewer?squad=${selectedId}`);
+      return parts.join(' | ');
     }
 
     function renderWeightSliders(weights = DEFAULT_WEIGHTS) {
@@ -247,6 +320,99 @@
       });
     }
 
+    function nextGuardId(guards) {
+      const nums = (guards || [])
+        .map((g) => /^g(\d+)$/.exec(g.id))
+        .filter(Boolean)
+        .map((m) => Number(m[1]));
+      const n = nums.length ? Math.max(...nums) + 1 : (guards?.length || 0) + 1;
+      return `g${n}`;
+    }
+
+    function parsePatrol(text) {
+      const trimmed = (text || '').trim();
+      if (!trimmed) return null;
+      return trimmed.split(';').map((pair) => {
+        const [x, y] = pair.split(',').map((v) => Number(v.trim()));
+        return [x, y];
+      });
+    }
+
+    function formatPatrol(patrol) {
+      if (!patrol || !patrol.length) return '';
+      return patrol.map((p) => `${p[0]},${p[1]}`).join(';');
+    }
+
+    function renderGuardRows(guards) {
+      const rows = el('guard-rows');
+      const list = guards || [];
+      if (!list.length) {
+        rows.innerHTML = '<tr><td colspan="6">No guards — click Add guard</td></tr>';
+        return;
+      }
+      rows.innerHTML = list.map((g, idx) => `
+        <tr data-idx="${idx}">
+          <td><input type="text" data-field="id" value="${g.id}" /></td>
+          <td><input type="number" data-field="x" step="0.5" value="${g.position?.[0] ?? 0}" /></td>
+          <td><input type="number" data-field="y" step="0.5" value="${g.position?.[1] ?? 0}" /></td>
+          <td><input type="number" data-field="vision" step="0.1" value="${g.vision_range ?? 3.5}" /></td>
+          <td><input type="text" data-field="patrol" style="width:10rem" value="${formatPatrol(g.patrol || [g.position])}" /></td>
+          <td class="row-actions"><button type="button" class="danger" data-remove="${idx}">✕</button></td>
+        </tr>
+      `).join('');
+      rows.querySelectorAll('button[data-remove]').forEach((btn) => {
+        btn.onclick = () => {
+          const i = Number(btn.dataset.remove);
+          squadScenario.guards.splice(i, 1);
+          renderGuardRows(squadScenario.guards);
+        };
+      });
+    }
+
+    function collectGuardsFromForm() {
+      const guards = [];
+      document.querySelectorAll('#guard-rows tr[data-idx]').forEach((row) => {
+        const id = row.querySelector('[data-field="id"]')?.value?.trim();
+        const x = Number(row.querySelector('[data-field="x"]')?.value ?? 0);
+        const y = Number(row.querySelector('[data-field="y"]')?.value ?? 0);
+        const vision = Number(row.querySelector('[data-field="vision"]')?.value ?? 3.5);
+        const patrolText = row.querySelector('[data-field="patrol"]')?.value ?? '';
+        const patrol = parsePatrol(patrolText) || [[x, y]];
+        guards.push({
+          id: id || nextGuardId(guards),
+          position: [x, y],
+          vision_range: vision,
+          vision_angle_deg: 120,
+          patrol_speed: 0.2,
+          patrol,
+        });
+      });
+      return guards;
+    }
+
+    function applyScenarioToForm(scenario) {
+      squadScenario = JSON.parse(JSON.stringify(scenario));
+      const obj = squadScenario.objective_position || [16, 16];
+      el('obj-x').value = obj[0];
+      el('obj-y').value = obj[1];
+      el('grid-size').value = squadScenario.grid_size ?? 20;
+      renderGuardRows(squadScenario.guards || []);
+      const n = (squadScenario.guards || []).length;
+      el('guard-hint').textContent =
+        `${n} guard(s) configured. Patrol waypoints define the route; single point = stationary.`;
+    }
+
+    async function loadSquadScenario(id) {
+      try {
+        const data = await api(`/squads/${id}/scenario`);
+        applyScenarioToForm(data.scenario);
+      } catch (err) {
+        squadScenario = null;
+        el('guard-hint').textContent = `No editable scenario: ${err.message}`;
+        renderGuardRows([]);
+      }
+    }
+
     async function loadSquadDetails(id) {
       selectedId = id;
       el('selected-label').textContent = id;
@@ -270,6 +436,7 @@
       } catch (err) {
         toast(err.message);
       }
+      await loadSquadScenario(id);
       await refreshSimulationStatus();
     }
 
@@ -298,13 +465,20 @@
 
     async function loadScenarios() {
       const data = await api('/scenarios');
-      const select = el('scenario-select');
-      select.innerHTML = '';
+      scenarioMeta = {};
+      const createSelect = el('scenario-select');
+      const simSelect = el('sim-scenario-select');
+      createSelect.innerHTML = '';
+      simSelect.innerHTML = '<option value="">(squad default)</option>';
       for (const s of data.scenarios || []) {
+        scenarioMeta[s.name] = s;
+        const label = `${s.name} (${s.display_name}, ${s.squad_size} agents, ${s.guard_count ?? '?'} guards)`;
         const opt = document.createElement('option');
         opt.value = s.name;
-        opt.textContent = `${s.name} (${s.display_name}, ${s.squad_size} agents)`;
-        select.appendChild(opt);
+        opt.textContent = label;
+        createSelect.appendChild(opt);
+        const simOpt = opt.cloneNode(true);
+        simSelect.appendChild(simOpt);
       }
     }
 
@@ -313,12 +487,14 @@
       const rows = el('squad-rows');
       const squads = data.squads || [];
       if (squads.length === 0) {
-        rows.innerHTML = '<tr><td colspan="5">No squads — create one →</td></tr>';
+        rows.innerHTML = '<tr><td colspan="7">No squads — create one →</td></tr>';
         return;
       }
       rows.innerHTML = squads.map((s) => `
         <tr data-id="${s.squad_id}">
           <td title="${s.squad_id}">${shortId(s.squad_id)}</td>
+          <td>${s.scenario_name || '–'}</td>
+          <td>${s.guard_count ?? '–'}</td>
           <td>${s.agent_ids.length}</td>
           <td>${s.tick}</td>
           <td>${s.has_doctrine ? 'yes' : '–'}</td>
@@ -338,8 +514,7 @@
       try {
         const data = await api(`/squads/${selectedId}/simulation`);
         const sim = data.simulation || {};
-        el('sim-status').textContent =
-          `Status: ${sim.status} | ticks ${sim.ticks_run || 0}/${sim.ticks_requested || '–'} | mission: ${sim.mission || '–'}`;
+        el('sim-status').textContent = formatSimStatus(sim);
         const running = sim.status === 'running';
         el('start-btn').disabled = running;
         el('cancel-btn').disabled = !running;
@@ -358,6 +533,80 @@
         el('sim-status').textContent = err.message;
       }
     }
+
+    el('add-guard-btn').onclick = () => {
+      if (!squadScenario) {
+        toast('Select a squad with scenario metadata first');
+        return;
+      }
+      if (!squadScenario.guards) squadScenario.guards = [];
+      const id = nextGuardId(squadScenario.guards);
+      const grid = Number(el('grid-size').value) || 20;
+      const cx = Math.floor(grid / 2);
+      squadScenario.guards.push({
+        id,
+        position: [cx, cx],
+        vision_range: 3.5,
+        vision_angle_deg: 120,
+        patrol_speed: 0.2,
+        patrol: [[cx, cx], [cx + 2, cx]],
+      });
+      renderGuardRows(squadScenario.guards);
+    };
+
+    el('save-scenario-btn').onclick = async () => {
+      if (!selectedId || !squadScenario) return;
+      try {
+        const body = {
+          guards: collectGuardsFromForm(),
+          objective_position: [
+            Number(el('obj-x').value),
+            Number(el('obj-y').value),
+          ],
+          grid_size: Number(el('grid-size').value),
+        };
+        await api(`/squads/${selectedId}/scenario`, {
+          method: 'PATCH',
+          body: JSON.stringify(body),
+        });
+        toast('World saved');
+        await loadSquadScenario(selectedId);
+        await loadSquads();
+      } catch (err) {
+        toast(err.message);
+      }
+    };
+
+    el('reset-scenario-btn').onclick = async () => {
+      if (!selectedId) return;
+      try {
+        await api(`/squads/${selectedId}/scenario`, {
+          method: 'PATCH',
+          body: JSON.stringify({ reset_to_file: true }),
+        });
+        toast('Scenario reset to file');
+        await loadSquadScenario(selectedId);
+        await loadSquads();
+      } catch (err) {
+        toast(err.message);
+      }
+    };
+
+    el('delete-btn').onclick = async () => {
+      if (!selectedId) return;
+      if (!confirm(`Delete squad ${shortId(selectedId)}?`)) return;
+      try {
+        await api(`/squads/${selectedId}`, { method: 'DELETE' });
+        toast('Squad deleted');
+        selectedId = null;
+        squadScenario = null;
+        el('selected-panel').style.display = 'none';
+        el('selected-label').textContent = 'Click a squad in the table';
+        await loadSquads();
+      } catch (err) {
+        toast(err.message);
+      }
+    };
 
     el('refresh-btn').onclick = async () => {
       el('status-bar').textContent = 'Refreshing…';
@@ -395,8 +644,10 @@
       if (!selectedId) return;
       const ticks = Number(el('ticks').value) || 300;
       const hzRaw = el('hz').value;
+      const scenarioOverride = el('sim-scenario-select').value;
       const body = { ticks };
       if (hzRaw) body.hz = Number(hzRaw);
+      if (scenarioOverride) body.scenario = scenarioOverride;
       try {
         await applyDoctrineFromSliders();
         await api(`/squads/${selectedId}/simulate`, { method: 'POST', body: JSON.stringify(body) });

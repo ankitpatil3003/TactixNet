@@ -6,7 +6,8 @@ import asyncio
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from simulation.driver import resolve_scenario, stream_simulation
+from simulation.driver import stream_simulation
+from simulation.scenario import ScenarioConfig
 
 SimulationStatus = Literal["idle", "running", "finished", "cancelled", "error"]
 
@@ -19,6 +20,9 @@ class SimulationState:
     ticks_requested: int = 0
     ticks_run: int = 0
     mission: str = "idle"
+    reason: str = ""
+    directives: int = 0
+    replans: int = 0
     error: str | None = None
     _task: asyncio.Task[None] | None = field(default=None, repr=False)
     _cancel: asyncio.Event = field(default_factory=asyncio.Event, repr=False)
@@ -31,6 +35,9 @@ class SimulationState:
             "ticks_requested": self.ticks_requested,
             "ticks_run": self.ticks_run,
             "mission": self.mission,
+            "reason": self.reason,
+            "directives": self.directives,
+            "replans": self.replans,
             "error": self.error,
         }
 
@@ -53,7 +60,8 @@ class SimulationRunner:
         self,
         squad_id: str,
         *,
-        scenario_name: str,
+        scenario: ScenarioConfig,
+        scenario_label: str,
         ticks: int,
         hz: float | None = None,
     ) -> SimulationState:
@@ -63,15 +71,17 @@ class SimulationRunner:
 
         state._cancel = asyncio.Event()
         state.status = "running"
-        state.scenario = scenario_name
+        state.scenario = scenario_label
         state.ticks_requested = ticks
         state.ticks_run = 0
         state.mission = "active"
+        state.reason = ""
+        state.directives = 0
+        state.replans = 0
         state.error = None
 
         async def _run() -> None:
             try:
-                scenario = resolve_scenario(scenario_name)
 
                 async def on_tick(tick: int, mission: str, _snapshot: dict[str, Any]) -> None:
                     state.ticks_run = tick
@@ -88,6 +98,9 @@ class SimulationRunner:
                 )
                 state.ticks_run = int(result.get("ticks_run", state.ticks_run))
                 state.mission = str(result.get("mission", state.mission))
+                state.reason = str(result.get("reason", ""))
+                state.directives = int(result.get("directives", 0))
+                state.replans = int(result.get("replans", 0))
                 state.status = "cancelled" if result.get("mission") == "cancelled" else "finished"
             except asyncio.CancelledError:
                 state.status = "cancelled"

@@ -22,6 +22,7 @@ GATEWAY = "http://127.0.0.1:8000"
 SCENARIOS = [
     DEFAULT_SCENARIO,
     DEFAULT_SCENARIO.parent / "ambush.yaml",
+    DEFAULT_SCENARIO.parent / "hold.yaml",
 ]
 
 

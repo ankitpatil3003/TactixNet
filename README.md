@@ -159,7 +159,7 @@ tactixnet/
 ├── openapi/       # Exported OpenAPI schema (openapi.json)
 ├── simulation/    # Headless grid sim, YAML scenarios, demo driver, benchmark CLI
 ├── viewer/        # Canvas visualizer (served by the gateway at /viewer)
-├── tests/         # Unit + integration + e2e (99 tests)
+├── tests/         # Unit + integration + e2e (110+ tests)
 └── docs/          # Architecture, simulation, protocol, benchmark methodology + results
 ```
 
@@ -236,6 +236,14 @@ Connect with `?mode=observer` to receive directives and `world_snapshot` relays 
   "mission": { "objective": "breach-gate", "status": "active" }
 }
 ```
+
+## v2.0 Highlights
+
+- **Live path integration:** `spawn_roles` active from tick 1; simulation status exposes `reason`, `directives`, `replans`.
+- **Console UX:** scenario column, scenario override on Start, mission outcome panel, **world editor** (add guards, patrol routes, objective/grid).
+- **Viewer UX:** patrol route overlay, mission reason/compromised count, HTTPS-safe `wss://` WebSocket.
+- **API:** `PATCH /squads/{id}/scenario`, `DELETE /squads/{id}`; inline scenario edits drive live simulation.
+- **Tests:** `test_simulation_integration.py`, `test_scenario_editor.py`, hold scenario soak (114+ tests).
 
 ## v1.9 Highlights
 
