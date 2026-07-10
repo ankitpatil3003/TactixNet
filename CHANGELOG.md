@@ -1,5 +1,23 @@
 # Changelog
 
+## v2.0.0
+
+### Added
+- `spawn_roles` from scenario YAML seed live simulation movement from tick 1 (before first CNP directive).
+- Richer simulation status: `reason`, `directives`, `replans` on `GET /squads/{id}/simulation`.
+- Patrol route polylines in viewer `world_snapshot` and canvas overlay.
+- Console: scenario column, scenario override on Start, mission reason/directives/replans in status panel.
+- Viewer: mission `reason`, `compromised_count`, `win_condition`; `wss://` when served over HTTPS.
+- Integration tests: `tests/test_simulation_integration.py` (simulate flow, cancel, spawn_roles, mission win).
+- Hold scenario 300-tick bounds soak; hold added to e2e smoke.
+- Console world editor: add/remove guards, edit patrol routes, objective position, grid size; reset to base YAML.
+- `PATCH /squads/{id}/scenario` and `DELETE /squads/{id}` control-plane endpoints.
+- Inline squad scenario edits used by live simulation (`resolve_scenario_for_squad`).
+- Scenario list includes `guard_count`; squad list shows per-squad guard count.
+
+### Changed
+- `world_snapshot` guards include `patrol` waypoint arrays for viewer overlay.
+
 ## v1.9.0
 
 ### Added

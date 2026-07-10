@@ -103,9 +103,25 @@ Built-in scenarios:
 | `ambush.yaml` | `extract-vip` — edge approach, 2 guards |
 | `hold.yaml` | `hold-point` — 4 agents, hold beacon 25 ticks |
 
+## Console world editor
+
+From `/console`, select a squad to edit its persisted scenario before starting simulation:
+
+| Control | API |
+|---------|-----|
+| Add/remove guards, patrol waypoints, vision range | `PATCH /squads/{id}/scenario` `{ "guards": [...] }` |
+| Objective position / grid size | same endpoint |
+| Reset to base YAML file | `PATCH` `{ "reset_to_file": true }` |
+| Delete squad | `DELETE /squads/{id}` |
+
+Custom guards are stored on the squad session and used by `stream_simulation()` via `resolve_scenario_for_squad()` (inline edits win over the on-disk file unless you override with a different scenario name on Start).
+
 ## world_snapshot
 
 Relayed to observer WebSockets and replay. Shape produced by `simulation/driver.py`:
+
+- Guards include optional `patrol` arrays for viewer route overlay.
+- `spawn_roles` in scenario YAML are applied from tick 1 in `stream_simulation()` (before first directive).
 
 ```json
 {
@@ -121,7 +137,8 @@ Relayed to observer WebSockets and replay. Shape produced by `simulation/driver.
       "vision_range": 3.5,
       "vision_angle_deg": 120,
       "heading": 45.0,
-      "state": "patrol"
+      "state": "patrol",
+      "patrol": [[10, 10], [12, 10], [12, 12]]
     }
   ],
   "mission": {
@@ -132,7 +149,9 @@ Relayed to observer WebSockets and replay. Shape produced by `simulation/driver.
 }
 ```
 
-The viewer draws guard vision arcs from `vision_range`, `vision_angle_deg`, and `heading`; guard state badges show `patrol`, `investigate`, or `chase`.
+The viewer draws guard vision arcs from `vision_range`, `vision_angle_deg`, and `heading`; patrol polylines from `patrol`; guard state badges show `patrol`, `investigate`, or `chase`.
+
+`GET /squads/{id}/simulation` returns `reason`, `directives`, and `replans` after a console or API simulation run.
 
 ## Running simulations
 

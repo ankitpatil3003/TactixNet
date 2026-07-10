@@ -65,6 +65,7 @@ def world_snapshot(
                 "vision_angle_deg": g.vision_angle_deg,
                 "heading": g.heading,
                 "state": g.state,
+                "patrol": [list(p) for p in g.patrol_route],
             }
             for g in sim.guards
         ],
@@ -98,8 +99,26 @@ def scenario_summary(config: ScenarioConfig, *, file_name: str) -> dict[str, Any
         "squad_size": config.squad_size,
         "objective": config.objective,
         "win_condition": config.win_condition,
+        "guard_count": len(config.raw.get("guards", [])),
+        "grid_size": int(config.raw.get("grid_size", 20)),
         "agent_ids": [a["id"] for a in config.raw.get("agents", [])],
     }
+
+
+def resolve_scenario_for_squad(
+    *,
+    scenario_raw: dict[str, Any] | None,
+    scenario_file: str | None,
+    override_name: str | None = None,
+) -> ScenarioConfig:
+    """Prefer inline squad scenario edits; fall back to YAML on disk."""
+    if scenario_raw is not None:
+        if override_name is None or override_name == scenario_file:
+            return ScenarioConfig.from_dict(scenario_raw)
+    file_name = override_name or scenario_file
+    if file_name is None:
+        raise FileNotFoundError("No scenario configured for squad")
+    return resolve_scenario(file_name)
 
 
 async def stream_simulation(
@@ -116,7 +135,9 @@ async def stream_simulation(
     effective_hz = hz if hz is not None else scenario.tick_rate_hz
     sim = build_sim(scenario)
     objective = scenario.objective_position
-    roles: dict[str, RoleEnum] = {}
+    spawn_roles = scenario.raw.get("spawn_roles", {})
+    roles = {aid: RoleEnum(role) for aid, role in spawn_roles.items()}
+    default_role = RoleEnum.STEALTH_COVER
     tracker = MissionTracker()
     stats: dict[str, Any] = {
         "directives": 0,
@@ -155,7 +176,7 @@ async def stream_simulation(
             frames = sim.all_perceptions()
             alert_by_agent = {f.agent_id: f.alert_level for f in frames}
             for agent in sim.agents:
-                role = roles.get(agent.agent_id, RoleEnum.STEALTH_COVER)
+                role = roles.get(agent.agent_id, default_role)
                 step_agent_by_role(
                     sim,
                     agent,

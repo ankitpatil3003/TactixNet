@@ -41,7 +41,7 @@
       <label>Speed <input id="replay-speed" type="range" min="1" max="20" value="5" /></label>
     </span>
   </div>
-  <div id="mission-panel">Mission: <b id="mission-objective">–</b> | Status: <b id="mission-status">–</b> | At objective: <b id="mission-at-obj">0</b> | Hold: <b id="mission-hold">–</b></div>
+  <div id="mission-panel">Mission: <b id="mission-objective">–</b> | Status: <b id="mission-status">–</b> | Win: <b id="mission-win">–</b> | At objective: <b id="mission-at-obj">0</b> | Compromised: <b id="mission-compromised">0</b> | Hold: <b id="mission-hold">–</b> | Reason: <b id="mission-reason">–</b></div>
   <div id="doctrine-panel">Doctrine: <b id="doctrine-text">–</b></div>
   <div id="canvas-wrap">
     <canvas id="grid" width="600" height="600"></canvas>
@@ -106,7 +106,10 @@
       const overlay = el('mission-overlay');
       el('mission-objective').textContent = mission.objective || '–';
       el('mission-status').textContent = (mission.status || 'active').toUpperCase();
+      el('mission-win').textContent = mission.win_condition || '–';
       el('mission-at-obj').textContent = mission.agents_at_objective ?? 0;
+      el('mission-compromised').textContent = mission.compromised_count ?? 0;
+      el('mission-reason').textContent = mission.reason || '–';
       const holdText = mission.win_condition === 'hold_objective'
         ? `${mission.hold_progress || 0}/${mission.hold_ticks || '–'}`
         : 'n/a';
@@ -202,10 +205,34 @@
       chase: '#f87171',
     };
 
+    function drawPatrolRoute(guard) {
+      const patrol = guard.patrol;
+      if (!patrol || patrol.length < 2) return;
+      ctx.strokeStyle = 'rgba(148, 163, 184, 0.55)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      const [x0, y0] = patrol[0];
+      ctx.moveTo(x0 * scale, y0 * scale);
+      for (let i = 1; i < patrol.length; i++) {
+        const [x, y] = patrol[i];
+        ctx.lineTo(x * scale, y * scale);
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+      for (const [px, py] of patrol) {
+        ctx.fillStyle = 'rgba(148, 163, 184, 0.7)';
+        ctx.beginPath();
+        ctx.arc(px * scale, py * scale, 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
     function drawGuards() {
       for (const guard of world.guards) {
         const [x, y] = guard.position;
         if (!isOnCanvas(guard.position)) continue;
+        drawPatrolRoute(guard);
         drawVisionArc(guard);
         const state = guard.state || 'patrol';
         ctx.fillStyle = GUARD_STATE_COLORS[state] || '#a78bfa';
@@ -404,7 +431,8 @@
         startReplay();
         return;
       }
-      const ws = new WebSocket(`ws://${location.host}/ws/squads/${squadId}?mode=observer`);
+      const wsScheme = location.protocol === 'https:' ? 'wss' : 'ws';
+      const ws = new WebSocket(`${wsScheme}://${location.host}/ws/squads/${squadId}?mode=observer`);
       ws.onopen = () => { el('status').textContent = `observing ${squadId.slice(0, 8)}…`; };
       ws.onclose = () => {
         el('status').textContent = 'disconnected — retrying in 2s';
