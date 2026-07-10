@@ -64,4 +64,5 @@ def test_default_mission_win_reachable_within_300_ticks() -> None:
         if tracker.is_finished():
             break
 
-    assert tracker.status in ("won", "active", "lost")
+    assert tracker.status == "won"
+    assert tracker.reason

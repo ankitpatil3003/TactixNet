@@ -95,6 +95,12 @@ def test_ambush_scenario_agents_stay_in_bounds_300_ticks() -> None:
         assert is_in_bounds(agent.position, sim.width, sim.height), agent.agent_id
 
 
+def test_hold_scenario_agents_stay_in_bounds_300_ticks() -> None:
+    sim = _run_soak_ticks("hold", ticks=300)
+    for agent in sim.agents:
+        assert is_in_bounds(agent.position, sim.width, sim.height), agent.agent_id
+
+
 def test_guards_stay_in_bounds_during_soak() -> None:
     sim = _run_soak_ticks("default", ticks=300)
     for guard in sim.guards:

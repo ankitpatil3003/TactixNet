@@ -32,9 +32,11 @@ from gateway.simulation_runner import SimulationRunner
 from simulation.driver import (
     list_scenario_files,
     resolve_scenario,
+    resolve_scenario_for_squad,
     scenario_name_from_path,
     scenario_summary,
 )
+from simulation.scenario import ScenarioConfig
 
 event_logger = SquadEventLogger()
 session_persistence = SessionPersistence()
@@ -121,6 +123,26 @@ class StartSimulationRequest(BaseModel):
     hz: float | None = Field(default=None, gt=0, le=60)
 
 
+class GuardConfigRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(min_length=1)
+    position: list[float] = Field(min_length=2, max_length=2)
+    patrol: list[list[float]] | None = None
+    vision_range: float | None = Field(default=None, gt=0)
+    vision_angle_deg: float | None = Field(default=None, gt=0, le=360)
+    patrol_speed: float | None = Field(default=None, gt=0)
+
+
+class UpdateSquadScenarioRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    guards: list[GuardConfigRequest] | None = None
+    objective_position: list[float] | None = Field(default=None, min_length=2, max_length=2)
+    grid_size: int | None = Field(default=None, ge=4, le=100)
+    reset_to_file: bool = False
+
+
 class SquadSummaryResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -130,6 +152,7 @@ class SquadSummaryResponse(BaseModel):
     objective_ref: str
     has_doctrine: bool
     scenario_name: str | None = None
+    guard_count: int | None = None
     simulation: dict[str, Any]
 
 
@@ -273,10 +296,12 @@ async def list_squads() -> SquadListResponse:
             continue
         sim_state = _simulation_runner.get(squad_id) if _simulation_runner else None
         scenario_name = None
+        guard_count = None
         if session.scenario is not None:
             scenario_name = session.scenario_file or str(
                 session.scenario.get("name", session.objective_ref)
             )
+            guard_count = len(session.scenario.get("guards", []))
         summaries.append(
             SquadSummaryResponse(
                 squad_id=session.squad_id,
@@ -285,6 +310,7 @@ async def list_squads() -> SquadListResponse:
                 objective_ref=session.objective_ref,
                 has_doctrine=session.doctrine is not None,
                 scenario_name=scenario_name,
+                guard_count=guard_count,
                 simulation=sim_state.to_dict() if sim_state else {"status": "idle"},
             )
         )
@@ -358,6 +384,117 @@ async def get_squad_scenario(squad_id: str) -> dict[str, Any]:
             ).model_dump(),
         )
     return {"squad_id": squad_id, "scenario": session.scenario}
+
+
+def _guard_to_dict(guard: GuardConfigRequest) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "id": guard.id,
+        "position": [float(guard.position[0]), float(guard.position[1])],
+    }
+    if guard.patrol:
+        payload["patrol"] = [[float(p[0]), float(p[1])] for p in guard.patrol]
+    elif guard.position:
+        payload["patrol"] = [payload["position"]]
+    if guard.vision_range is not None:
+        payload["vision_range"] = guard.vision_range
+    if guard.vision_angle_deg is not None:
+        payload["vision_angle_deg"] = guard.vision_angle_deg
+    if guard.patrol_speed is not None:
+        payload["patrol_speed"] = guard.patrol_speed
+    return payload
+
+
+@app.patch("/squads/{squad_id}/scenario", response_model=SquadStateResponse)
+async def update_squad_scenario(
+    squad_id: str,
+    body: UpdateSquadScenarioRequest,
+) -> SquadStateResponse:
+    session = await _get_or_rehydrate(squad_id)
+    if session is None:
+        raise HTTPException(
+            status_code=404,
+            detail=ErrorResponse(
+                code=ErrorCode.SQUAD_NOT_FOUND,
+                message=f"Squad {squad_id} not found",
+            ).model_dump(),
+        )
+    if _simulation_runner is not None and _simulation_runner.is_running(squad_id):
+        raise HTTPException(
+            status_code=409,
+            detail=ErrorResponse(
+                code=ErrorCode.VALIDATION_ERROR,
+                message="Cannot edit scenario while simulation is running",
+            ).model_dump(),
+        )
+
+    if body.reset_to_file:
+        if session.scenario_file is None:
+            raise HTTPException(
+                status_code=400,
+                detail=ErrorResponse(
+                    code=ErrorCode.VALIDATION_ERROR,
+                    message="Squad has no base scenario file to reset",
+                ).model_dump(),
+            )
+        session.scenario = resolve_scenario(session.scenario_file).raw
+    else:
+        if session.scenario is None:
+            raise HTTPException(
+                status_code=404,
+                detail=ErrorResponse(
+                    code=ErrorCode.SQUAD_NOT_FOUND,
+                    message=f"No scenario metadata for squad {squad_id}",
+                ).model_dump(),
+            )
+        scenario = dict(session.scenario)
+        if body.guards is not None:
+            scenario["guards"] = [_guard_to_dict(g) for g in body.guards]
+        if body.objective_position is not None:
+            scenario["objective_position"] = [
+                float(body.objective_position[0]),
+                float(body.objective_position[1]),
+            ]
+        if body.grid_size is not None:
+            scenario["grid_size"] = body.grid_size
+        try:
+            ScenarioConfig.from_dict(scenario)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=ErrorResponse(
+                    code=ErrorCode.VALIDATION_ERROR,
+                    message=str(exc),
+                ).model_dump(),
+            ) from exc
+        session.scenario = scenario
+
+    await _persist_session(session)
+    return _session_to_response(session)
+
+
+@app.delete("/squads/{squad_id}")
+async def delete_squad(squad_id: str) -> dict[str, bool]:
+    session = await _get_or_rehydrate(squad_id)
+    if session is None:
+        raise HTTPException(
+            status_code=404,
+            detail=ErrorResponse(
+                code=ErrorCode.SQUAD_NOT_FOUND,
+                message=f"Squad {squad_id} not found",
+            ).model_dump(),
+        )
+    if _simulation_runner is not None and _simulation_runner.is_running(squad_id):
+        raise HTTPException(
+            status_code=409,
+            detail=ErrorResponse(
+                code=ErrorCode.VALIDATION_ERROR,
+                message="Cannot delete squad while simulation is running",
+            ).model_dump(),
+        )
+    store.delete(squad_id)
+    if session_persistence.available:
+        await session_persistence.delete(squad_id)
+    return {"deleted": True}
 
 
 @app.get("/squads/{squad_id}/events")
@@ -466,11 +603,10 @@ async def start_simulation(squad_id: str, body: StartSimulationRequest) -> dict[
         )
 
     try:
-        state = await _simulation_runner.start(
-            squad_id,
-            scenario_name=scenario_name,
-            ticks=body.ticks,
-            hz=body.hz,
+        scenario_config = resolve_scenario_for_squad(
+            scenario_raw=session.scenario,
+            scenario_file=session.scenario_file,
+            override_name=body.scenario,
         )
     except FileNotFoundError as exc:
         raise HTTPException(
@@ -480,6 +616,25 @@ async def start_simulation(squad_id: str, body: StartSimulationRequest) -> dict[
                 message=str(exc),
             ).model_dump(),
         ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=ErrorResponse(
+                code=ErrorCode.VALIDATION_ERROR,
+                message=str(exc),
+            ).model_dump(),
+        ) from exc
+
+    scenario_label = body.scenario or session.scenario_file or scenario_config.name
+
+    try:
+        state = await _simulation_runner.start(
+            squad_id,
+            scenario=scenario_config,
+            scenario_label=scenario_label,
+            ticks=body.ticks,
+            hz=body.hz,
+        )
     except RuntimeError as exc:
         raise HTTPException(
             status_code=409,
