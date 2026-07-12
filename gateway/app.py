@@ -22,6 +22,7 @@ from contracts import (
     SquadDirective,
 )
 from engine.bus import MessageBus
+from engine.heartbeat import engine_worker_status
 from engine.worker import is_distributed_mode
 from gateway.events import SquadEventLogger
 from gateway.live import CycleResult
@@ -181,13 +182,18 @@ CONSOLE_HTML = Path(__file__).resolve().parent.parent / "viewer" / "console.html
 
 @app.get("/health")
 async def health() -> dict[str, str]:
-    return {
+    payload: dict[str, str] = {
         "status": "ok",
         "event_log": "connected" if event_logger.available else "offline",
         "session_store": "connected" if session_persistence.available else "offline",
         "engine_mode": "distributed" if is_distributed_mode() else "inprocess",
         "hot_path_bus": "connected" if _hot_path_bus is not None else "offline",
     }
+    if is_distributed_mode() and _hot_path_bus is not None:
+        payload["engine_worker"] = await engine_worker_status(_hot_path_bus)
+    else:
+        payload["engine_worker"] = "inprocess"
+    return payload
 
 
 @app.get("/viewer")

@@ -23,6 +23,18 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import os,time,redis; c=redis.from_url(os.environ['REDIS_URL']); v=c.get('tactixnet:engine:heartbeat'); exit(0 if v and time.time()-float(v)<30 else 1)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
   gateway:
     build:
@@ -39,7 +51,7 @@ services:
       redis:
         condition: service_healthy
       engine:
-        condition: service_started
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 10s

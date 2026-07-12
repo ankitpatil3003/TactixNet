@@ -184,6 +184,13 @@
         <label for="priority-objective">Priority objective</label>
         <input id="priority-objective" type="text" value="breach-gate" list="objective-options" />
         <datalist id="objective-options"></datalist>
+        <label for="fallback-plan">Fallback plan</label>
+        <select id="fallback-plan">
+          <option value="">(none)</option>
+          <option value="hold-position">hold-position</option>
+          <option value="retreat">retreat</option>
+          <option value="reflex-only-fallback">reflex-only-fallback</option>
+        </select>
         <div class="weights" id="weights"></div>
         <button type="button" id="doctrine-btn">Apply doctrine</button>
         <div id="doctrine-preview" style="font-size:0.8rem;color:var(--muted);margin-top:0.35rem"></div>
@@ -314,8 +321,10 @@
     function updateDoctrinePreview(weights = collectWeights()) {
       const preview = formatWeightPreview(weights);
       const objective = el('priority-objective').value || 'breach-gate';
+      const fallback = el('fallback-plan').value || '(none)';
       const hint = objectiveMappingHint(objective);
-      el('doctrine-preview').textContent = `Current sliders: ${preview} | ${hint}`;
+      el('doctrine-preview').textContent =
+        `Current sliders: ${preview} | fallback: ${fallback} | ${hint}`;
     }
 
     function objectiveMappingHint(priorityObjective) {
@@ -460,10 +469,12 @@
           renderWeightSliders(state.doctrine.role_weights);
           el('priority-objective').value =
             state.doctrine.priority_objective || state.objective_ref || 'breach-gate';
+          el('fallback-plan').value = state.doctrine.fallback_plan || '';
           updateDoctrinePreview(state.doctrine.role_weights);
         } else {
           renderWeightSliders();
           el('priority-objective').value = state.objective_ref || 'breach-gate';
+          el('fallback-plan').value = '';
           updateDoctrinePreview();
         }
       } catch (err) {
@@ -487,6 +498,7 @@
         squad_id: selectedId,
         role_weights: collectWeights(),
         priority_objective: el('priority-objective').value || 'breach-gate',
+        fallback_plan: el('fallback-plan').value || '',
       };
       const state = await api(`/squads/${selectedId}/doctrine`, {
         method: 'POST',
@@ -568,6 +580,7 @@
     }
 
     el('priority-objective').oninput = () => updateDoctrinePreview();
+    el('fallback-plan').onchange = () => updateDoctrinePreview();
 
     el('add-guard-btn').onclick = () => {
       if (!squadScenario) {

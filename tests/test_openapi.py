@@ -24,6 +24,12 @@ def test_openapi_json_endpoint() -> None:
     assert "/squads" in paths
     assert "/health" in paths
     assert "/squads/{squad_id}/events" in paths
+    assert "/squads/{squad_id}/scenario" in paths
+    assert "/squads/{squad_id}/simulate" in paths
+    patch = paths["/squads/{squad_id}/scenario"].get("patch")
+    delete = paths["/squads/{squad_id}"].get("delete")
+    assert patch is not None
+    assert delete is not None
 
 
 def test_committed_openapi_matches_gateway() -> None:
