@@ -37,6 +37,7 @@ class ReflexNegotiator:
     _directive_seq: int = 0
     _bidders: dict[str, CNPBidder] = field(default_factory=dict, init=False)
     _cooldown_until: dict[str, int] = field(default_factory=dict, init=False)
+    _base_weights: dict[RoleEnum, float] = field(default_factory=dict, init=False)
 
     def __post_init__(self) -> None:
         self._bidders = {
@@ -158,5 +159,20 @@ class ReflexNegotiator:
         return awards
 
     def update_bidder_weights(self, weights: dict[RoleEnum, float]) -> None:
+        self._base_weights = dict(weights)
         for bidder in self._bidders.values():
             bidder.update_weights(weights)
+
+    def apply_replan_multipliers(self, multipliers: dict[RoleEnum, float]) -> None:
+        if not self._base_weights:
+            combined = dict(multipliers)
+        else:
+            combined = dict(self._base_weights)
+            for role, multiplier in multipliers.items():
+                combined[role] = combined.get(role, 1.0) * multiplier
+        for bidder in self._bidders.values():
+            bidder.update_weights(combined)
+
+    def restore_base_weights(self) -> None:
+        if self._base_weights:
+            self.update_bidder_weights(self._base_weights)

@@ -91,7 +91,9 @@ def step_agent_by_role(
     step: float = 0.2,
     *,
     alert_level: AlertLevel = AlertLevel.CALM,
+    step_scale: float = 1.0,
 ) -> None:
+    step *= step_scale
     role_enum = role if isinstance(role, RoleEnum) else RoleEnum(role)
     guard_pos = nearest_guard(sim, agent)
     under_pressure = alert_level_rank(alert_level) >= alert_level_rank(AlertLevel.ALERT)

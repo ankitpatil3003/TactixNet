@@ -207,6 +207,47 @@
             }
           }
         }
+      },
+      "delete": {
+        "summary": "Delete Squad",
+        "operationId": "delete_squad_squads__squad_id__delete",
+        "parameters": [
+          {
+            "name": "squad_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Squad Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Delete Squad Squads  Squad Id  Delete"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/squads/{squad_id}/scenario": {
@@ -232,6 +273,53 @@
                 "schema": {
                   "type": "object",
                   "title": "Response Get Squad Scenario Squads  Squad Id  Scenario Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update Squad Scenario",
+        "operationId": "update_squad_scenario_squads__squad_id__scenario_patch",
+        "parameters": [
+          {
+            "name": "squad_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Squad Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSquadScenarioRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SquadStateResponse"
                 }
               }
             }
@@ -582,6 +670,85 @@
         ],
         "title": "DoctrineUpdate"
       },
+      "GuardConfigRequest": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Id"
+          },
+          "position": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "Position"
+          },
+          "patrol": {
+            "anyOf": [
+              {
+                "items": {
+                  "items": {
+                    "type": "number"
+                  },
+                  "type": "array"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Patrol"
+          },
+          "vision_range": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vision Range"
+          },
+          "vision_angle_deg": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 360.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vision Angle Deg"
+          },
+          "patrol_speed": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Patrol Speed"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "position"
+        ],
+        "title": "GuardConfigRequest"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -796,6 +963,17 @@
             ],
             "title": "Scenario Name"
           },
+          "guard_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guard Count"
+          },
           "simulation": {
             "type": "object",
             "title": "Simulation"
@@ -851,6 +1029,61 @@
         "additionalProperties": false,
         "type": "object",
         "title": "StartSimulationRequest"
+      },
+      "UpdateSquadScenarioRequest": {
+        "properties": {
+          "guards": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/GuardConfigRequest"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guards"
+          },
+          "objective_position": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array",
+                "maxItems": 2,
+                "minItems": 2
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Objective Position"
+          },
+          "grid_size": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 100.0,
+                "minimum": 4.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grid Size"
+          },
+          "reset_to_file": {
+            "type": "boolean",
+            "title": "Reset To File",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "UpdateSquadScenarioRequest"
       },
       "ValidationError": {
         "properties": {

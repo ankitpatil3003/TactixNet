@@ -8,6 +8,13 @@ from typing import Any
 
 from client import SquadClient
 from contracts import AlertLevel, RoleEnum
+from simulation.doctrine_bridge import (
+    DoctrineState,
+    movement_step_scale,
+    should_hold_agents,
+    should_retreat_agents,
+    step_retreat,
+)
 from simulation.grid import GridSim, Guard, SquadAgent
 from simulation.mission import MissionTracker, evaluate_mission, mission_snapshot
 from simulation.movement import step_agent_by_role
@@ -43,9 +50,12 @@ def world_snapshot(
     tracker: MissionTracker,
     *,
     alert_by_agent: dict[str, AlertLevel] | None = None,
+    doctrine_state: DoctrineState | None = None,
 ) -> dict[str, Any]:
     frames = sim.all_perceptions()
     alerts = alert_by_agent or {f.agent_id: f.alert_level for f in frames}
+    objective = doctrine_state.objective if doctrine_state else scenario.objective_position
+    doctrine_payload = doctrine_state.to_snapshot() if doctrine_state else None
     return {
         "type": "world_snapshot",
         "tick": sim.tick,
@@ -69,7 +79,14 @@ def world_snapshot(
             }
             for g in sim.guards
         ],
-        "mission": mission_snapshot(scenario, tracker, sim, alert_by_agent=alerts),
+        "mission": mission_snapshot(
+            scenario,
+            tracker,
+            sim,
+            alert_by_agent=alerts,
+            objective_position=objective,
+            doctrine=doctrine_payload,
+        ),
     }
 
 
@@ -130,11 +147,13 @@ async def stream_simulation(
     hz: float | None = None,
     cancel_event: asyncio.Event | None = None,
     on_tick: Any | None = None,
+    initial_doctrine: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Stream perception frames for an existing squad (does not create the squad)."""
     effective_hz = hz if hz is not None else scenario.tick_rate_hz
     sim = build_sim(scenario)
-    objective = scenario.objective_position
+    doctrine_state = DoctrineState.from_doctrine(initial_doctrine, scenario)
+    objective = doctrine_state.objective
     spawn_roles = scenario.raw.get("spawn_roles", {})
     roles = {aid: RoleEnum(role) for aid, role in spawn_roles.items()}
     default_role = RoleEnum.STEALTH_COVER
@@ -153,7 +172,11 @@ async def stream_simulation(
     async def receiver() -> None:
         while True:
             message = await client.receive_json()
-            if message.get("type") != "directive":
+            msg_type = message.get("type")
+            if msg_type == "doctrine":
+                doctrine_state.update_from_doctrine(message.get("doctrine", {}), scenario)
+                continue
+            if msg_type != "directive":
                 continue
             stats["directives"] += 1
             directive = message["directive"]
@@ -175,20 +198,43 @@ async def stream_simulation(
             sim.advance_tick()
             frames = sim.all_perceptions()
             alert_by_agent = {f.agent_id: f.alert_level for f in frames}
-            for agent in sim.agents:
-                role = roles.get(agent.agent_id, default_role)
-                step_agent_by_role(
-                    sim,
-                    agent,
-                    role,
-                    objective,
-                    alert_level=alert_by_agent.get(agent.agent_id, AlertLevel.CALM),
-                )
-            evaluate_mission(sim, scenario, tracker, alert_by_agent=alert_by_agent)
+            objective = doctrine_state.objective
+            fallback = doctrine_state.fallback_plan
+
+            if should_hold_agents(fallback):
+                pass
+            elif should_retreat_agents(fallback):
+                for agent in sim.agents:
+                    step_retreat(sim, agent, objective=objective)
+            else:
+                for agent in sim.agents:
+                    role = roles.get(agent.agent_id, default_role)
+                    scale = movement_step_scale(role, doctrine_state.role_weights)
+                    step_agent_by_role(
+                        sim,
+                        agent,
+                        role,
+                        objective,
+                        alert_level=alert_by_agent.get(agent.agent_id, AlertLevel.CALM),
+                        step_scale=scale,
+                    )
+            evaluate_mission(
+                sim,
+                scenario,
+                tracker,
+                alert_by_agent=alert_by_agent,
+                objective_position=objective,
+            )
             stats["mission"] = tracker.status
             stats["ticks_run"] = sim.tick
 
-            snapshot = world_snapshot(sim, scenario, tracker, alert_by_agent=alert_by_agent)
+            snapshot = world_snapshot(
+                sim,
+                scenario,
+                tracker,
+                alert_by_agent=alert_by_agent,
+                doctrine_state=doctrine_state,
+            )
             await client.send_snapshot(snapshot)
             for frame in sim.all_perceptions():
                 await client.send_frame(frame)

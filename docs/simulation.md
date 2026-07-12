@@ -116,6 +116,28 @@ From `/console`, select a squad to edit its persisted scenario before starting s
 
 Custom guards are stored on the squad session and used by `stream_simulation()` via `resolve_scenario_for_squad()` (inline edits win over the on-disk file unless you override with a different scenario name on Start).
 
+## Doctrine-sim bridge
+
+Doctrine fields now drive simulation behavior, not just CNP role bidding:
+
+| Doctrine field | Effect |
+|----------------|--------|
+| `priority_objective` | Resolved to grid coordinates via `scenario.objective` or optional `objectives:` map in YAML |
+| `role_weights` | Scales movement step intensity for awarded roles |
+| `fallback_plan` | `hold-position` freezes movement; `retreat` flees guards; `reflex-only-fallback` blocks Groq refresh |
+
+The sim harness listens for `type: "doctrine"` WebSocket messages mid-run and updates the movement target. Mission evaluation uses the resolved objective position.
+
+Example `objectives` map in scenario YAML:
+
+```yaml
+objective: breach-gate
+objective_position: [16, 16]
+objectives:
+  breach-gate: [16, 16]
+  flank-point: [8, 16]
+```
+
 ## world_snapshot
 
 Relayed to observer WebSockets and replay. Shape produced by `simulation/driver.py`:

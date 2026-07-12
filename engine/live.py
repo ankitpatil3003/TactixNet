@@ -17,6 +17,7 @@ from engine.checkpoint import RedisCheckpointSaver
 from engine.graph import build_negotiation_graph
 from engine.negotiation import ReflexNegotiator
 from engine.strategy import StrategyLayer
+from simulation.doctrine_bridge import blocks_strategy_refresh
 
 DOCTRINE_REFRESH_INTERVAL_TICKS = 100
 
@@ -61,6 +62,7 @@ class LiveNegotiationRunner:
     _replan_count: int = 0
     _last_doctrine_tick: int = 0
     _strategy_task: asyncio.Task[DoctrineUpdate] | None = field(default=None, init=False)
+    _fallback_plan: str = ""
     _interrupt_started_at: float | None = field(default=None, init=False)
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False)
 
@@ -75,6 +77,7 @@ class LiveNegotiationRunner:
 
     def apply_doctrine(self, doctrine: DoctrineUpdate) -> None:
         self._negotiator.update_bidder_weights(doctrine.role_weights)
+        self._fallback_plan = doctrine.fallback_plan
         if doctrine.priority_objective:
             self.objective_ref = doctrine.priority_objective
 
@@ -89,6 +92,8 @@ class LiveNegotiationRunner:
         # Without a strategy backend, fallback doctrine resets all weights to 1.0
         # and would overwrite manual doctrine from the console.
         if not self._strategy.available:
+            return
+        if blocks_strategy_refresh(self._fallback_plan):
             return
         should_refresh = after_replan or (
             tick - self._last_doctrine_tick >= DOCTRINE_REFRESH_INTERVAL_TICKS

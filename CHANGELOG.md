@@ -1,5 +1,22 @@
 # Changelog
 
+## v2.1.0
+
+### Added
+- Doctrine-sim bridge: `priority_objective` resolves to grid coordinates via scenario `objectives` map.
+- Live sim listens for `doctrine` WebSocket updates and retargets movement mid-run.
+- Fallback plan behaviors: `hold-position`, `retreat`, `reflex-only-fallback` (blocks Groq refresh).
+- Weight-scaled movement steps from doctrine `role_weights`.
+- Mission snapshot includes doctrine state (`objective_position`, `objective_mapped`, `fallback_plan`).
+- Python + TypeScript SDK control-plane methods: health, list scenarios/squads, create from scenario, update/delete squad, start/cancel simulation.
+- Console objective mapping hint and datalist; viewer doctrine/fallback HUD fields.
+
+### Changed
+- Replan weight boosts multiply current doctrine weights instead of replacing them.
+- `session.objective_ref` syncs when doctrine is applied.
+- Groq strategy refresh context includes mission status, reason, compromised count, agents at objective.
+- OpenAPI spec regenerated with PATCH/DELETE and simulation endpoints.
+
 ## v2.0.0
 
 ### Added

@@ -42,12 +42,14 @@ def evaluate_mission(
     tracker: MissionTracker,
     *,
     alert_by_agent: dict[str, AlertLevel],
+    objective_position: tuple[float, float] | None = None,
 ) -> MissionTracker:
     if tracker.is_finished():
         return tracker
 
+    target = objective_position or scenario.objective_position
     at_objective = _agents_at_objective(
-        sim.agents, scenario.objective_position, scenario.objective_radius
+        sim.agents, target, scenario.objective_radius
     )
 
     if scenario.lose_on_all_compromised and _all_compromised(alert_by_agent):
@@ -77,14 +79,17 @@ def mission_snapshot(
     sim: GridSim,
     *,
     alert_by_agent: dict[str, AlertLevel] | None = None,
+    objective_position: tuple[float, float] | None = None,
+    doctrine: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     alerts = alert_by_agent or {}
+    target = objective_position or scenario.objective_position
     at_objective = _agents_at_objective(
-        sim.agents, scenario.objective_position, scenario.objective_radius
+        sim.agents, target, scenario.objective_radius
     )
-    return {
+    payload: dict[str, Any] = {
         "objective": scenario.objective,
-        "objective_position": list(scenario.objective_position),
+        "objective_position": list(target),
         "objective_radius": scenario.objective_radius,
         "win_condition": scenario.win_condition,
         "hold_ticks": scenario.hold_ticks,
@@ -96,3 +101,6 @@ def mission_snapshot(
             1 for level in alerts.values() if level == AlertLevel.COMPROMISED
         ),
     }
+    if doctrine is not None:
+        payload["doctrine"] = doctrine
+    return payload
