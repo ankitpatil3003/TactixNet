@@ -634,6 +634,9 @@ async def start_simulation(squad_id: str, body: StartSimulationRequest) -> dict[
             scenario_label=scenario_label,
             ticks=body.ticks,
             hz=body.hz,
+            initial_doctrine=(
+                session.doctrine.model_dump(mode="json") if session.doctrine else None
+            ),
         )
     except RuntimeError as exc:
         raise HTTPException(
@@ -701,6 +704,8 @@ async def _apply_doctrine(
     session: SquadSession, doctrine: DoctrineUpdate, *, source: str
 ) -> None:
     session.doctrine = doctrine
+    if doctrine.priority_objective:
+        session.objective_ref = doctrine.priority_objective
     message = {
         "type": "doctrine",
         "source": source,
@@ -744,9 +749,14 @@ async def _handle_cycle_results(
         return
 
     last = results[-1]
+    mission = session.last_mission_snapshot or {}
     context = (
         f"tick={frame.tick} interrupted={last.interrupted} "
-        f"replans={last.replan_count} objective={last.objective_ref}"
+        f"replans={last.replan_count} objective={last.objective_ref} "
+        f"mission_status={mission.get('status', 'unknown')} "
+        f"mission_reason={mission.get('reason', '')} "
+        f"compromised={mission.get('compromised_count', 0)} "
+        f"agents_at_objective={mission.get('agents_at_objective', 0)}"
     )
 
     async def on_doctrine_applied(doctrine: DoctrineUpdate) -> None:
@@ -801,6 +811,9 @@ async def squad_websocket(websocket: WebSocket, squad_id: str) -> None:
                 continue
 
             if isinstance(payload, dict) and payload.get("type") == "world_snapshot":
+                mission = payload.get("mission")
+                if isinstance(mission, dict):
+                    session.last_mission_snapshot = mission
                 await _broadcast(session.observers, payload)
                 await event_logger.log(session.squad_id, "world_snapshot", payload)
                 continue

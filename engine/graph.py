@@ -99,7 +99,7 @@ def _make_collect_bids(negotiator: ReflexNegotiator):
     async def collect_bids(state: SquadState) -> SquadState:
         frames = [PerceptionFrame.model_validate(f) for f in state.get("frames", [])]
         if state.get("interrupted"):
-            negotiator.update_bidder_weights(
+            negotiator.apply_replan_multipliers(
                 {RoleEnum.DISTRACT: 1.5, RoleEnum.STEALTH_COVER: 1.3}
             )
         result = await negotiator.negotiate(
@@ -108,6 +108,8 @@ def _make_collect_bids(negotiator: ReflexNegotiator):
             tick=state.get("tick", 0),
             interrupted=bool(state.get("interrupted")),
         )
+        if state.get("interrupted"):
+            negotiator.restore_base_weights()
         return {
             **state,
             "bids": [b.model_dump() for b in result.bids_received],

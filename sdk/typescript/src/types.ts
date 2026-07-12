@@ -30,6 +30,7 @@ export interface DoctrineUpdate {
   squad_id: string;
   role_weights: Partial<Record<Role, number>>;
   priority_objective?: string;
+  fallback_plan?: string;
 }
 
 export interface RoleAward {
@@ -78,4 +79,49 @@ export interface EventsResponse {
   events: Array<{ id?: string; type: string; payload: unknown }>;
   total: number;
   truncated: boolean;
+}
+
+export interface ScenarioSummary {
+  name: string;
+  display_name: string;
+  tick_rate_hz: number;
+  squad_size: number;
+  objective: string;
+  win_condition: string;
+  guard_count?: number;
+  grid_size?: number;
+  agent_ids: string[];
+}
+
+export interface SimulationStatus {
+  squad_id: string;
+  status: string;
+  scenario?: string | null;
+  ticks_requested?: number;
+  ticks_run?: number;
+  mission?: string;
+  reason?: string;
+  directives?: number;
+  replans?: number;
+  error?: string | null;
+}
+
+export interface StartSimulationRequest {
+  ticks?: number;
+  hz?: number;
+  scenario?: string;
+}
+
+export interface UpdateScenarioRequest {
+  guards?: Array<{
+    id: string;
+    position: [number, number];
+    patrol?: [number, number][];
+    vision_range?: number;
+    vision_angle_deg?: number;
+    patrol_speed?: number;
+  }>;
+  objective_position?: [number, number];
+  grid_size?: number;
+  reset_to_file?: boolean;
 }

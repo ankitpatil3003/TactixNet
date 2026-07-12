@@ -23,6 +23,7 @@ class SquadSession:
     objective_ref: str = "breach-alpha"
     scenario: dict[str, Any] | None = None
     scenario_file: str | None = None
+    last_mission_snapshot: dict[str, Any] | None = None
 
 
 class SessionStore:

@@ -64,6 +64,7 @@ class SimulationRunner:
         scenario_label: str,
         ticks: int,
         hz: float | None = None,
+        initial_doctrine: dict[str, Any] | None = None,
     ) -> SimulationState:
         state = self.get(squad_id)
         if state.status == "running":
@@ -95,6 +96,7 @@ class SimulationRunner:
                     hz=hz,
                     cancel_event=state._cancel,
                     on_tick=on_tick,
+                    initial_doctrine=initial_doctrine,
                 )
                 state.ticks_run = int(result.get("ticks_run", state.ticks_run))
                 state.mission = str(result.get("mission", state.mission))

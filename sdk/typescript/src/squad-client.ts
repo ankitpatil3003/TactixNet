@@ -6,7 +6,11 @@ import type {
   DoctrineUpdate,
   EventsResponse,
   PerceptionFrame,
+  ScenarioSummary,
+  SimulationStatus,
   SquadState,
+  StartSimulationRequest,
+  UpdateScenarioRequest,
 } from "./types.js";
 
 export interface SquadClientOptions {
@@ -120,6 +124,112 @@ export class SquadClient {
         throw new Error(String(message.message ?? "gateway error"));
       }
     }
+  }
+
+  static async createFromScenario(
+    gateway: string,
+    scenario: string,
+    options?: { fetchImpl?: typeof fetch },
+  ): Promise<SquadClient> {
+    const client = new SquadClient({ gateway });
+    if (options?.fetchImpl) {
+      client.http = options.fetchImpl;
+    }
+    const response = await client.http(`${client.gateway}/squads/from-scenario`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scenario }),
+    });
+    if (!response.ok) {
+      throw new Error(`create from scenario failed: HTTP ${response.status}`);
+    }
+    const data = (await response.json()) as SquadState;
+    client.squadId = data.squad_id;
+    return client;
+  }
+
+  async health(): Promise<Record<string, string>> {
+    const response = await this.http(`${this.gateway}/health`);
+    if (!response.ok) {
+      throw new Error(`health failed: HTTP ${response.status}`);
+    }
+    return (await response.json()) as Record<string, string>;
+  }
+
+  async listScenarios(): Promise<{ scenarios: ScenarioSummary[]; total: number }> {
+    const response = await this.http(`${this.gateway}/scenarios`);
+    if (!response.ok) {
+      throw new Error(`list scenarios failed: HTTP ${response.status}`);
+    }
+    return (await response.json()) as { scenarios: ScenarioSummary[]; total: number };
+  }
+
+  async listSquads(): Promise<{ squads: SquadState[]; total: number }> {
+    const response = await this.http(`${this.gateway}/squads`);
+    if (!response.ok) {
+      throw new Error(`list squads failed: HTTP ${response.status}`);
+    }
+    return (await response.json()) as { squads: SquadState[]; total: number };
+  }
+
+  async updateScenario(body: UpdateScenarioRequest): Promise<SquadState> {
+    const squadId = this.requireSquadId();
+    const response = await this.http(`${this.gateway}/squads/${squadId}/scenario`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      throw new Error(`update scenario failed: HTTP ${response.status}`);
+    }
+    return (await response.json()) as SquadState;
+  }
+
+  async deleteSquad(): Promise<{ deleted: boolean }> {
+    const squadId = this.requireSquadId();
+    const response = await this.http(`${this.gateway}/squads/${squadId}`, {
+      method: "DELETE",
+    });
+    if (!response.ok) {
+      throw new Error(`delete squad failed: HTTP ${response.status}`);
+    }
+    return (await response.json()) as { deleted: boolean };
+  }
+
+  async startSimulation(options?: StartSimulationRequest): Promise<{
+    started: boolean;
+    simulation: SimulationStatus;
+  }> {
+    const squadId = this.requireSquadId();
+    const response = await this.http(`${this.gateway}/squads/${squadId}/simulate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(options ?? {}),
+    });
+    if (!response.ok) {
+      throw new Error(`start simulation failed: HTTP ${response.status}`);
+    }
+    return (await response.json()) as { started: boolean; simulation: SimulationStatus };
+  }
+
+  async getSimulation(): Promise<{ squad_id: string; simulation: SimulationStatus }> {
+    const squadId = this.requireSquadId();
+    const response = await this.http(`${this.gateway}/squads/${squadId}/simulation`);
+    if (!response.ok) {
+      throw new Error(`get simulation failed: HTTP ${response.status}`);
+    }
+    return (await response.json()) as { squad_id: string; simulation: SimulationStatus };
+  }
+
+  async cancelSimulation(): Promise<{ squad_id: string; simulation: SimulationStatus }> {
+    const squadId = this.requireSquadId();
+    const response = await this.http(`${this.gateway}/squads/${squadId}/simulate/cancel`, {
+      method: "POST",
+    });
+    if (!response.ok) {
+      throw new Error(`cancel simulation failed: HTTP ${response.status}`);
+    }
+    return (await response.json()) as { squad_id: string; simulation: SimulationStatus };
   }
 
   async applyDoctrine(doctrine: DoctrineUpdate): Promise<SquadState> {
