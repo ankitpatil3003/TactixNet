@@ -169,14 +169,16 @@ tactixnet/
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/health` | GET | Liveness + Redis connectivity (`event_log`, `session_store`) |
+| `/health` | GET | Liveness + Redis connectivity (`event_log`, `session_store`, `engine_worker` in distributed mode) |
 | `/squads` | GET | List active squads |
 | `/squads` | POST | Create squad — `{"agent_ids": [...], "objective_ref"?, "scenario"?}` |
 | `/squads/from-scenario` | POST | Create squad from built-in scenario name |
 | `/scenarios` | GET | List available scenario YAML files |
 | `/squads/{id}` | GET | Squad state incl. `last_directive`, `objective_ref` |
+| `/squads/{id}` | DELETE | Remove squad session |
 | `/squads/{id}/scenario` | GET | Scenario metadata attached at squad creation |
-| `/squads/{id}/doctrine` | POST | Update strategy doctrine (applies weights immediately) |
+| `/squads/{id}/scenario` | PATCH | Edit inline scenario (guards, patrol, objective, grid) |
+| `/squads/{id}/doctrine` | POST | Update strategy doctrine (weights, objective, fallback plan) |
 | `/squads/{id}/simulate` | POST | Start background simulation (`ticks`, `hz` optional) |
 | `/squads/{id}/simulation` | GET | Simulation status for a squad |
 | `/squads/{id}/simulate/cancel` | POST | Cancel running simulation |
@@ -236,6 +238,13 @@ Connect with `?mode=observer` to receive directives and `world_snapshot` relays 
   "mission": { "objective": "breach-gate", "status": "active" }
 }
 ```
+
+## v2.1 Highlights
+
+- **Doctrine-sim bridge:** `priority_objective` resolves to grid coordinates; movement and mission evaluation follow doctrine mid-run.
+- **Fallback plans:** `hold-position`, `retreat`, and `reflex-only-fallback` affect live simulation and Groq refresh.
+- **SDK parity:** Python and TypeScript clients wrap full control-plane API (scenarios, squads, simulation lifecycle).
+- **Operator UX:** console objective mapping hints; viewer doctrine/fallback HUD and resolved target coordinates.
 
 ## v2.0 Highlights
 

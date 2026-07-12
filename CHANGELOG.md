@@ -1,5 +1,19 @@
 # Changelog
 
+## v2.2.0
+
+### Added
+- Engine worker Redis heartbeat (`tactixnet:engine:heartbeat`) with compose healthcheck.
+- `/health` reports `engine_worker` status in distributed mode.
+- Redis checkpoint `aput_writes` persistence for LangGraph pending writes.
+- Distributed `DirectiveRelay` round-trip integration test.
+- Console fallback plan selector (`hold-position`, `retreat`, `reflex-only-fallback`).
+- OpenAPI tests assert PATCH scenario and DELETE squad paths.
+
+### Changed
+- `scripts/e2e_smoke.py` uses `SquadClient` control-plane methods instead of raw HTTP.
+- Docker Compose waits for healthy engine before starting gateway.
+
 ## v2.1.0
 
 ### Added

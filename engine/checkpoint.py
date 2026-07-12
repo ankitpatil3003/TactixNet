@@ -99,4 +99,7 @@ class RedisCheckpointSaver(BaseCheckpointSaver):
         writes: list[tuple[str, Any]],
         task_id: str,
     ) -> None:
-        return None
+        thread_id = config["configurable"]["thread_id"]
+        key = f"checkpoint:{thread_id}:writes:{task_id}"
+        payload = json.dumps([{"channel": channel, "value": value} for channel, value in writes])
+        await self._bus.client.set(key, payload)

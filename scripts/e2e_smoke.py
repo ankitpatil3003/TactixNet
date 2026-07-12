@@ -9,8 +9,6 @@ from __future__ import annotations
 import asyncio
 import sys
 
-import httpx
-
 from client import SquadClient
 from contracts import AlertLevel, DoctrineUpdate, RoleEnum
 from simulation.driver import build_sim, resolve_scenario, world_snapshot
@@ -27,31 +25,30 @@ SCENARIOS = [
 
 
 async def check_health() -> None:
-    async with httpx.AsyncClient() as http:
-        r = await http.get(f"{GATEWAY}/health", timeout=5.0)
-        r.raise_for_status()
-        body = r.json()
-        assert body["status"] == "ok"
-        print(f"[health] ok event_log={body['event_log']} session_store={body['session_store']}")
+    client = SquadClient(GATEWAY)
+    body = await client.health()
+    assert body["status"] == "ok"
+    print(f"[health] ok event_log={body['event_log']} session_store={body['session_store']}")
 
 
 async def check_console_endpoints() -> None:
-    async with httpx.AsyncClient(base_url=GATEWAY, timeout=10.0) as http:
-        scenarios = (await http.get("/scenarios")).json()
-        assert scenarios["total"] >= 1
-        print(f"[console] scenarios={scenarios['total']}")
+    client = SquadClient(GATEWAY)
+    scenarios = await client.list_scenarios()
+    assert scenarios["total"] >= 1
+    print(f"[console] scenarios={scenarios['total']}")
 
-        created = await http.post("/squads/from-scenario", json={"scenario": "default"})
-        created.raise_for_status()
-        squad_id = created.json()["squad_id"]
+    created = await client.create_from_scenario("default")
+    squad_id = created.squad_id
+    assert squad_id
 
-        squads = (await http.get("/squads")).json()
-        assert any(s["squad_id"] == squad_id for s in squads["squads"])
-        print(f"[console] created idle squad {squad_id[:8]}… listed={squads['total']}")
+    squads = await client.list_squads()
+    assert any(s["squad_id"] == squad_id for s in squads["squads"])
+    print(f"[console] created idle squad {squad_id[:8]}… listed={squads['total']}")
 
-        sim = (await http.get(f"/squads/{squad_id}/simulation")).json()
-        assert sim["simulation"]["status"] == "idle"
-        print("[console] simulation status idle before start — ok")
+    sim = await client.get_simulation()
+    assert sim["simulation"]["status"] == "idle"
+    print("[console] simulation status idle before start — ok")
+    await created.aclose()
 
 
 async def run_scenario_demo(path) -> str:
@@ -106,12 +103,7 @@ async def run_scenario_demo(path) -> str:
         except TimeoutError:
             pass
 
-    async with httpx.AsyncClient() as http:
-        events = await http.get(
-            f"{GATEWAY}/squads/{squad.squad_id}/events?replay_only=true&count=10000"
-        )
-    events.raise_for_status()
-    replay = events.json()
+    replay = await squad.get_events(replay_only=True, count=10000)
     assert replay["total"] >= directives, (
         f"expected events >= {directives}, got {replay['total']}"
     )
