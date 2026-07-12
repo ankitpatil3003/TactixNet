@@ -41,8 +41,8 @@
       <label>Speed <input id="replay-speed" type="range" min="1" max="20" value="5" /></label>
     </span>
   </div>
-  <div id="mission-panel">Mission: <b id="mission-objective">–</b> | Status: <b id="mission-status">–</b> | Win: <b id="mission-win">–</b> | At objective: <b id="mission-at-obj">0</b> | Compromised: <b id="mission-compromised">0</b> | Hold: <b id="mission-hold">–</b> | Reason: <b id="mission-reason">–</b></div>
-  <div id="doctrine-panel">Doctrine: <b id="doctrine-text">–</b></div>
+  <div id="mission-panel">Mission: <b id="mission-objective">–</b> | Status: <b id="mission-status">–</b> | Win: <b id="mission-win">–</b> | At objective: <b id="mission-at-obj">0</b> | Compromised: <b id="mission-compromised">0</b> | Hold: <b id="mission-hold">–</b> | Reason: <b id="mission-reason">–</b> | Target: <b id="mission-target">–</b></div>
+  <div id="doctrine-panel">Doctrine: <b id="doctrine-text">–</b> | Fallback: <b id="doctrine-fallback">–</b> | Mapped: <b id="doctrine-mapped">–</b></div>
   <div id="canvas-wrap">
     <canvas id="grid" width="600" height="600"></canvas>
     <div id="mission-overlay"></div>
@@ -110,6 +110,12 @@
       el('mission-at-obj').textContent = mission.agents_at_objective ?? 0;
       el('mission-compromised').textContent = mission.compromised_count ?? 0;
       el('mission-reason').textContent = mission.reason || '–';
+      if (mission.objective_position) {
+        el('mission-target').textContent = `[${mission.objective_position[0]}, ${mission.objective_position[1]}]`;
+      }
+      if (mission.doctrine) {
+        updateDoctrine({ doctrine: mission.doctrine });
+      }
       const holdText = mission.win_condition === 'hold_objective'
         ? `${mission.hold_progress || 0}/${mission.hold_ticks || '–'}`
         : 'n/a';
@@ -140,6 +146,10 @@
     function updateDoctrine(message) {
       const doctrine = message.doctrine || message;
       el('doctrine-text').textContent = formatDoctrine(doctrine);
+      const fallback = doctrine.fallback_plan || message.fallback_plan || '–';
+      el('doctrine-fallback').textContent = fallback || '–';
+      const mapped = doctrine.objective_mapped ?? message.objective_mapped;
+      el('doctrine-mapped').textContent = mapped === undefined ? '–' : (mapped ? 'yes' : 'no');
     }
 
     function drawGrid() {

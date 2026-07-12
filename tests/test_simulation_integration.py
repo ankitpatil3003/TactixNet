@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import queue
 import time
 from typing import Any
 from unittest.mock import AsyncMock, patch
@@ -30,7 +31,19 @@ class _TestClientWebSocket:
         await asyncio.to_thread(self._ws.send_text, payload)
 
     async def recv(self) -> str:
-        return await asyncio.to_thread(self._ws.receive_text)
+        while True:
+            try:
+                message = await asyncio.to_thread(
+                    self._ws._send_queue.get,
+                    True,
+                    0.1,
+                )
+            except queue.Empty:
+                continue
+            if isinstance(message, BaseException):
+                raise message
+            self._ws._raise_on_close(message)
+            return str(message["text"])
 
 
 class _InProcessSquadClient:

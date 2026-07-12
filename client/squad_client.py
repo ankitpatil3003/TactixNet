@@ -89,6 +89,94 @@ class SquadClient:
             if message.get("type") == "error":
                 raise RuntimeError(message.get("message", "gateway error"))
 
+    @classmethod
+    async def create_from_scenario(
+        cls,
+        gateway: str,
+        scenario: str,
+        *,
+        http: httpx.AsyncClient | None = None,
+    ) -> SquadClient:
+        client = cls(gateway)
+        if http is not None:
+            client._http = http
+        else:
+            await client._ensure_http()
+        response = await client._http.post("/squads/from-scenario", json={"scenario": scenario})
+        response.raise_for_status()
+        data = response.json()
+        client.squad_id = data["squad_id"]
+        return client
+
+    async def health(self) -> dict[str, Any]:
+        await self._ensure_http()
+        response = await self._http.get("/health")
+        response.raise_for_status()
+        return response.json()
+
+    async def list_scenarios(self) -> dict[str, Any]:
+        await self._ensure_http()
+        response = await self._http.get("/scenarios")
+        response.raise_for_status()
+        return response.json()
+
+    async def list_squads(self) -> dict[str, Any]:
+        await self._ensure_http()
+        response = await self._http.get("/squads")
+        response.raise_for_status()
+        return response.json()
+
+    async def update_scenario(self, body: dict[str, Any]) -> dict[str, Any]:
+        await self._ensure_http()
+        if self.squad_id is None:
+            raise RuntimeError("squad_id is required")
+        response = await self._http.patch(f"/squads/{self.squad_id}/scenario", json=body)
+        response.raise_for_status()
+        return response.json()
+
+    async def delete_squad(self) -> dict[str, Any]:
+        await self._ensure_http()
+        if self.squad_id is None:
+            raise RuntimeError("squad_id is required")
+        response = await self._http.delete(f"/squads/{self.squad_id}")
+        response.raise_for_status()
+        return response.json()
+
+    async def start_simulation(
+        self,
+        *,
+        ticks: int = 300,
+        hz: float | None = None,
+        scenario: str | None = None,
+    ) -> dict[str, Any]:
+        await self._ensure_http()
+        if self.squad_id is None:
+            raise RuntimeError("squad_id is required")
+        body: dict[str, Any] = {"ticks": ticks}
+        if hz is not None:
+            body["hz"] = hz
+        if scenario is not None:
+            body["scenario"] = scenario
+        response = await self._http.post(f"/squads/{self.squad_id}/simulate", json=body)
+        response.raise_for_status()
+        return response.json()
+
+    async def get_simulation(self) -> dict[str, Any]:
+        await self._ensure_http()
+        if self.squad_id is None:
+            raise RuntimeError("squad_id is required")
+        response = await self._http.get(f"/squads/{self.squad_id}/simulation")
+        response.raise_for_status()
+        return response.json()
+
+    async def cancel_simulation(self) -> dict[str, Any]:
+        await self._ensure_http()
+        if self.squad_id is None:
+            raise RuntimeError("squad_id is required")
+        response = await self._http.post(f"/squads/{self.squad_id}/simulate/cancel")
+        response.raise_for_status()
+        return response.json()
+
     async def apply_doctrine(self, doctrine: DoctrineUpdate) -> dict[str, Any]:
         await self._ensure_http()
         if self.squad_id is None:

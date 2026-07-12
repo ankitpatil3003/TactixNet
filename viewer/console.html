@@ -182,7 +182,8 @@
 
         <h3 style="font-size:0.95rem;margin:1rem 0 0.5rem">Doctrine (apply before Start)</h3>
         <label for="priority-objective">Priority objective</label>
-        <input id="priority-objective" type="text" value="breach-gate" />
+        <input id="priority-objective" type="text" value="breach-gate" list="objective-options" />
+        <datalist id="objective-options"></datalist>
         <div class="weights" id="weights"></div>
         <button type="button" id="doctrine-btn">Apply doctrine</button>
         <div id="doctrine-preview" style="font-size:0.8rem;color:var(--muted);margin-top:0.35rem"></div>
@@ -311,7 +312,29 @@
     }
 
     function updateDoctrinePreview(weights = collectWeights()) {
-      el('doctrine-preview').textContent = `Current sliders: ${formatWeightPreview(weights)}`;
+      const preview = formatWeightPreview(weights);
+      const objective = el('priority-objective').value || 'breach-gate';
+      const hint = objectiveMappingHint(objective);
+      el('doctrine-preview').textContent = `Current sliders: ${preview} | ${hint}`;
+    }
+
+    function objectiveMappingHint(priorityObjective) {
+      if (!squadScenario) return 'Load squad scenario to see objective mapping';
+      const objectives = squadScenario.objectives || {};
+      const defaultObjective = squadScenario.objective;
+      const defaultPos = squadScenario.objective_position || [16, 16];
+      let pos = defaultPos;
+      let mapped = true;
+      if (priorityObjective && priorityObjective !== defaultObjective) {
+        if (objectives[priorityObjective]) {
+          pos = objectives[priorityObjective];
+        } else {
+          mapped = false;
+        }
+      }
+      return mapped
+        ? `Objective maps to [${pos[0]}, ${pos[1]}]`
+        : `Unknown objective; fallback [${pos[0]}, ${pos[1]}]`;
     }
 
     function highlightSquadRow(id) {
@@ -400,6 +423,16 @@
       const n = (squadScenario.guards || []).length;
       el('guard-hint').textContent =
         `${n} guard(s) configured. Patrol waypoints define the route; single point = stationary.`;
+      const options = el('objective-options');
+      options.innerHTML = '';
+      const names = new Set([squadScenario.objective]);
+      Object.keys(squadScenario.objectives || {}).forEach((name) => names.add(name));
+      for (const name of names) {
+        const opt = document.createElement('option');
+        opt.value = name;
+        options.appendChild(opt);
+      }
+      updateDoctrinePreview();
     }
 
     async function loadSquadScenario(id) {
@@ -533,6 +566,8 @@
         el('sim-status').textContent = err.message;
       }
     }
+
+    el('priority-objective').oninput = () => updateDoctrinePreview();
 
     el('add-guard-btn').onclick = () => {
       if (!squadScenario) {

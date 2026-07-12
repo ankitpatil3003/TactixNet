@@ -3,6 +3,9 @@ tick_rate_hz: 20
 squad_size: 5
 objective: breach-gate
 objective_position: [16, 16]
+objectives:
+  breach-gate: [16, 16]
+  flank-point: [8, 16]
 objective_radius: 1.5
 win_condition: reach_objective
 lose_on_all_compromised: true
