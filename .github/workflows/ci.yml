@@ -66,6 +66,7 @@ jobs:
       - name: Compose E2E smoke
         env:
           GATEWAY_URL: http://127.0.0.1:8000
+          PYTHONPATH: .
         run: python scripts/compose_e2e.py
 
       - name: Compose logs on failure
