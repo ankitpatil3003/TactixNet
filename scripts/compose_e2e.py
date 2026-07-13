@@ -44,20 +44,20 @@ async def run_simulate_smoke() -> None:
     assert squad.squad_id
     try:
         started = await squad.start_simulation(ticks=40)
-        assert started["simulation"]["status"] in {"running", "completed"}
+        assert started["simulation"]["status"] in {"running", "finished", "error"}
 
         deadline = time.monotonic() + 90.0
         final = None
         while time.monotonic() < deadline:
             status = await squad.get_simulation()
             sim = status["simulation"]
-            if sim["status"] in {"completed", "failed", "cancelled"}:
+            if sim["status"] in {"finished", "error", "cancelled"}:
                 final = sim
                 break
             await asyncio.sleep(1.0)
 
         assert final is not None, "simulation did not finish"
-        assert final["status"] == "completed", final
+        assert final["status"] == "finished", final
         assert int(final.get("ticks_run", 0)) >= 1
         print(
             f"[compose-e2e] simulate ok squad={squad.squad_id[:8]}… "
