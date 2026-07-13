@@ -27,7 +27,9 @@ flowchart LR
     Client[Game Client / Sim Harness] -->|WS perception frames| Gateway[FastAPI Gateway]
     Gateway -->|per-tick negotiation| Graph[LangGraph Orchestrator]
     Graph -->|interrupt| Replan[compromised_replan subgraph]
-    Graph -.->|async, non-blocking| LLM[Tier-2 Strategy: Groq]
+    Graph -->|schedule_strategy flag| StrategyAsync[Tier-2 Strategy async Groq]
+    Graph -.->|never blocks tick| LLM[Groq]
+    StrategyAsync -.-> LLM
     Graph -->|SquadDirective| Gateway
     Gateway -->|WS directives| Client
     Gateway -->|WS broadcast| Viewer[Canvas Viewer /viewer]
@@ -238,6 +240,13 @@ Connect with `?mode=observer` to receive directives and `world_snapshot` relays 
   "mission": { "objective": "breach-gate", "status": "active" }
 }
 ```
+
+## v2.2 Highlights
+
+- **Distributed hardening:** engine Redis heartbeat, compose healthchecks, `engine_worker` in `/health`.
+- **Checkpoint writes:** Redis `aput_writes` persistence for LangGraph pending writes.
+- **DirectiveRelay tests:** engine → Redis → gateway broadcast round-trip coverage.
+- **Operator polish:** console fallback plan selector; `e2e_smoke` uses `SquadClient` SDK.
 
 ## v2.1 Highlights
 

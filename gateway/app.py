@@ -702,6 +702,7 @@ async def _broadcast_to_session(session: SquadSession, message: dict[str, Any]) 
 
 
 async def _register_distributed_squad(session: SquadSession) -> None:
+    await _wire_runner_callbacks(session)
     if _directive_relay is not None:
         await _directive_relay.register_squad(session)
 
@@ -751,31 +752,30 @@ async def _handle_cycle_results(
     if results:
         await _persist_session(session)
 
-    if session.runner is None or not results:
-        return
 
-    last = results[-1]
-    mission = session.last_mission_snapshot or {}
-    context = (
-        f"tick={frame.tick} interrupted={last.interrupted} "
-        f"replans={last.replan_count} objective={last.objective_ref} "
-        f"mission_status={mission.get('status', 'unknown')} "
-        f"mission_reason={mission.get('reason', '')} "
-        f"compromised={mission.get('compromised_count', 0)} "
-        f"agents_at_objective={mission.get('agents_at_objective', 0)}"
-    )
+async def _wire_runner_callbacks(session: SquadSession) -> None:
+    if session.runner is None:
+        return
 
     async def on_doctrine_applied(doctrine: DoctrineUpdate) -> None:
         session.doctrine = doctrine
         await _apply_doctrine(session, doctrine, source="strategy")
         await _persist_session(session)
 
-    session.runner.schedule_strategy_refresh(
-        tick=frame.tick,
-        context=context,
-        after_replan=last.interrupted,
-        on_applied=on_doctrine_applied,
-    )
+    session.runner.set_doctrine_callback(on_doctrine_applied)
+    if session.last_mission_snapshot:
+        session.runner.set_mission_snapshot(session.last_mission_snapshot)
+
+
+async def _publish_mission_snapshot(session: SquadSession, mission: dict[str, Any]) -> None:
+    session.last_mission_snapshot = mission
+    if session.runner is not None:
+        session.runner.set_mission_snapshot(mission)
+    if is_distributed_mode() and _hot_path_bus is not None:
+        await _hot_path_bus.publish_control(
+            session.squad_id,
+            {"type": "mission", "mission": mission},
+        )
 
 
 @app.websocket("/ws/squads/{squad_id}")
@@ -819,7 +819,7 @@ async def squad_websocket(websocket: WebSocket, squad_id: str) -> None:
             if isinstance(payload, dict) and payload.get("type") == "world_snapshot":
                 mission = payload.get("mission")
                 if isinstance(mission, dict):
-                    session.last_mission_snapshot = mission
+                    await _publish_mission_snapshot(session, mission)
                 await _broadcast(session.observers, payload)
                 await event_logger.log(session.squad_id, "world_snapshot", payload)
                 continue

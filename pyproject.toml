@@ -1,6 +1,6 @@
 [project]
 name = "tactixnet"
-version = "0.3.0"
+version = "2.3.0"
 description = "Decentralized multi-agent coordination engine for real-time tactics games"
 requires-python = ">=3.12"
 

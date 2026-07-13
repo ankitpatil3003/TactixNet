@@ -35,6 +35,18 @@ class EngineWorker:
             objective_ref=objective_ref,
             checkpoint_bus=self._checkpoint_bus,
         )
+
+        async def on_doctrine_applied(doctrine: DoctrineUpdate) -> None:
+            await self._bus.publish_doctrine_update(
+                squad_id,
+                {
+                    "type": "doctrine",
+                    "source": "strategy",
+                    "doctrine": doctrine.model_dump(mode="json"),
+                },
+            )
+
+        runner.set_doctrine_callback(on_doctrine_applied)
         self._runners[squad_id] = runner
         logger.info("Registered squad %s (%d agents)", squad_id[:8], len(agent_ids))
         return runner
@@ -56,6 +68,9 @@ class EngineWorker:
             if doctrine_raw:
                 doctrine = DoctrineUpdate.model_validate(doctrine_raw)
                 runner.apply_doctrine(doctrine)
+            mission = payload.get("mission")
+            if isinstance(mission, dict):
+                runner.set_mission_snapshot(mission)
             return
 
         runner = self._runners.get(squad_id)
@@ -73,6 +88,12 @@ class EngineWorker:
                     "doctrine": doctrine.model_dump(mode="json"),
                 },
             )
+            return
+
+        if msg_type == "mission":
+            mission = payload.get("mission")
+            if isinstance(mission, dict):
+                runner.set_mission_snapshot(mission)
 
     async def handle_perception(self, squad_id: str, frame: PerceptionFrame) -> None:
         runner = self._runners.get(squad_id)
@@ -87,10 +108,6 @@ class EngineWorker:
         frame: PerceptionFrame,
         results: list[CycleResult],
     ) -> None:
-        runner = self._runners.get(squad_id)
-        if runner is None:
-            return
-
         for result in results:
             await self._bus.publish_directive_envelope(squad_id, result.to_message())
             if result.interrupted:
@@ -103,32 +120,6 @@ class EngineWorker:
                         "replan_count": result.replan_count,
                     },
                 )
-
-        if not results:
-            return
-
-        last = results[-1]
-        context = (
-            f"tick={frame.tick} interrupted={last.interrupted} "
-            f"replans={last.replan_count} objective={last.objective_ref}"
-        )
-
-        async def on_doctrine_applied(doctrine: DoctrineUpdate) -> None:
-            await self._bus.publish_doctrine_update(
-                squad_id,
-                {
-                    "type": "doctrine",
-                    "source": "strategy",
-                    "doctrine": doctrine.model_dump(mode="json"),
-                },
-            )
-
-        runner.schedule_strategy_refresh(
-            tick=frame.tick,
-            context=context,
-            after_replan=last.interrupted,
-            on_applied=on_doctrine_applied,
-        )
 
     async def run(self) -> None:
         pubsub = await self._bus.psubscribe(

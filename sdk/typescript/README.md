@@ -44,6 +44,12 @@ await squad.close();
 | Method | Description |
 |--------|-------------|
 | `SquadClient.create()` | `POST /squads` |
+| `createFromScenario()` | `POST /squads/from-scenario` |
+| `health()` | `GET /health` |
+| `listScenarios()` / `listSquads()` | Control-plane lists |
+| `updateScenario()` | `PATCH /squads/{id}/scenario` |
+| `deleteSquad()` | `DELETE /squads/{id}` |
+| `startSimulation()` / `getSimulation()` / `cancelSimulation()` | Simulate lifecycle |
 | `connect({ observer })` | WebSocket `/ws/squads/{id}` |
 | `sendFrame()` | Send `PerceptionFrame` |
 | `sendSnapshot()` | Relay `world_snapshot` to observers (see `docs/simulation.md`) |
