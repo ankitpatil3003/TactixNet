@@ -9,6 +9,9 @@ from langgraph.graph import END, StateGraph
 from contracts import AlertLevel, PerceptionFrame, RoleEnum, alert_level_rank
 from engine.negotiation import ReflexNegotiator
 from engine.state import SquadState
+from engine.strategy_context import should_request_strategy_refresh
+
+STRATEGY_REFRESH_INTERVAL_TICKS = 100
 
 
 def build_negotiation_graph(negotiator: ReflexNegotiator) -> StateGraph:
@@ -21,6 +24,7 @@ def build_negotiation_graph(negotiator: ReflexNegotiator) -> StateGraph:
     graph.add_node("award_roles", _award_roles)
     graph.add_node("commit_directive", _commit_directive)
     graph.add_node("compromised_replan", _compromised_replan)
+    graph.add_node("schedule_strategy", _schedule_strategy)
 
     graph.set_entry_point("ingest_perception")
     graph.add_edge("ingest_perception", "detect_conflict")
@@ -36,7 +40,8 @@ def build_negotiation_graph(negotiator: ReflexNegotiator) -> StateGraph:
     graph.add_edge("announce_tasks", "collect_bids")
     graph.add_edge("collect_bids", "award_roles")
     graph.add_edge("award_roles", "commit_directive")
-    graph.add_edge("commit_directive", END)
+    graph.add_edge("commit_directive", "schedule_strategy")
+    graph.add_edge("schedule_strategy", END)
 
     return graph
 
@@ -133,3 +138,25 @@ def _commit_directive(state: SquadState) -> SquadState:
         "objective_ref": state.get("objective_ref", "default"),
     }
     return {**state, "directive": directive}
+
+
+def _schedule_strategy(state: SquadState) -> SquadState:
+    """Mark whether Tier-2 should run asynchronously (never awaits the LLM)."""
+    tick = int(state.get("tick", 0))
+    interrupted = bool(state.get("interrupted"))
+    requested = should_request_strategy_refresh(
+        tick=tick,
+        last_doctrine_tick=int(state.get("last_doctrine_tick", 0)),
+        interrupted=interrupted,
+        interval_ticks=STRATEGY_REFRESH_INTERVAL_TICKS,
+    )
+    hint = state.get("strategy_context_hint") or (
+        f"tick={tick} interrupted={interrupted} "
+        f"replans={state.get('replan_count', 0)} "
+        f"objective={state.get('objective_ref', 'default')}"
+    )
+    return {
+        **state,
+        "strategy_refresh_requested": requested,
+        "strategy_context": hint if requested else "",
+    }

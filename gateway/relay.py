@@ -46,6 +46,7 @@ class DirectiveRelay:
                 "doctrine": (
                     session.doctrine.model_dump(mode="json") if session.doctrine else None
                 ),
+                "mission": session.last_mission_snapshot,
             },
         )
 

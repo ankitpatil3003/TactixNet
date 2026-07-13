@@ -70,8 +70,7 @@ async def test_engine_worker_round_trip() -> None:
         async for channel, data in listener_bus.listen(pubsub):
             received_channel = channel
             received_payload = data
-            break
-            if time.monotonic() > deadline:
+            if received_payload or time.monotonic() > deadline:
                 break
 
         assert received_payload, "expected directive envelope from engine worker"

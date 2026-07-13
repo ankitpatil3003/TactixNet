@@ -17,3 +17,7 @@ class SquadState(TypedDict, total=False):
     interrupt_reason: str | None
     alert_agent_id: str | None
     replan_count: int
+    last_doctrine_tick: int
+    strategy_context_hint: str
+    strategy_refresh_requested: bool
+    strategy_context: str

@@ -720,13 +720,26 @@
       }
     };
 
+    async function refreshHealthBar(readyMessage) {
+      try {
+        const health = await api('/health');
+        const mode = health.engine_mode || 'unknown';
+        const worker = health.engine_worker || 'unknown';
+        const bus = health.hot_path_bus || 'offline';
+        el('status-bar').textContent =
+          `${readyMessage} | mode=${mode} | engine_worker=${worker} | hot_path=${bus}`;
+      } catch (err) {
+        el('status-bar').textContent = readyMessage;
+      }
+    }
+
     renderWeightSliders();
     updateDoctrinePreview();
     (async () => {
       try {
         await loadScenarios();
         await loadSquads();
-        el('status-bar').textContent = 'Ready — create a squad, apply doctrine, then Start';
+        await refreshHealthBar('Ready — create a squad, apply doctrine, then Start');
       } catch (err) {
         el('status-bar').textContent = `Error: ${err.message}`;
       }

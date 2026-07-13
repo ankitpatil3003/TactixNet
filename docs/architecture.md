@@ -6,11 +6,19 @@ TactixNet uses a two-tier decision loop optimized for real-time tactics games.
 
 Deterministic utility scoring + Contract Net Protocol (CNP) bidding. Pure asyncio math over localized perception vectors. Resolves tactical reactions (e.g., guard spotted → squad re-roles) without LLM latency.
 
-**Pipeline:** ingest → detect conflict → announce tasks → collect bids → award roles → commit directive
+**Pipeline:** ingest → detect conflict → announce tasks → collect bids → award roles → commit directive → schedule_strategy
 
 ## Tier 2 — Strategy Layer (200ms–2s, optional)
 
-LangGraph-orchestrated Groq LLM node generates squad doctrine (role weights, priorities, fallback plans). Runs asynchronously and never blocks the game tick. Gracefully degrades to reflex-only when LLM is unavailable.
+A LangGraph `schedule_strategy` node decides when Tier-2 should refresh doctrine
+(after compromise replan, or every N ticks). The node itself **never awaits** the
+LLM: it only sets `strategy_refresh_requested` on graph state. The live runner then
+schedules `StrategyLayer` (Groq) asynchronously so the reflex tick stays under
+150 ms. Gracefully degrades to reflex-only when the LLM is unavailable or
+`fallback_plan=reflex-only-fallback`.
+
+**Pipeline:** ingest → detect conflict → (optional replan) → announce → bids →
+award → commit → schedule_strategy
 
 ## Components
 

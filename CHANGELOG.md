@@ -1,5 +1,19 @@
 # Changelog
 
+## v2.3.0
+
+### Added
+- Compose-stack E2E CI job (`compose-e2e`) with `scripts/compose_e2e.py`.
+- LangGraph `schedule_strategy` node: decides when Tier-2 should refresh without awaiting the LLM.
+- Shared `engine/strategy_context.py` for mission-aware Groq context.
+- Distributed worker mission control messages keep strategy context parity with in-process mode.
+- Console status bar shows `engine_mode`, `engine_worker`, and `hot_path_bus` from `/health`.
+
+### Changed
+- Strategy refresh scheduling is owned by the negotiation graph + live runner (gateway/worker no longer duplicate schedule calls).
+- Architecture docs describe async schedule_strategy vs blocking LLM in the tick path.
+- Fixed distributed listen deadline check in `tests/test_distributed.py`.
+
 ## v2.2.0
 
 ### Added
